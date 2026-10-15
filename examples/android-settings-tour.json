@@ -1,0 +1,23 @@
+{
+  "format": "motive.workflow/1",
+  "name": "android-settings-tour",
+  "description": "Read-only navigation on a connected Android phone: Settings > Apps, check a row, go back. Changes nothing. Needs adb and USB debugging; the phone must be unlocked.",
+  "scopes": { "apps": ["com.android.settings"] },
+  "deadlineMs": 90000,
+  "steps": [
+    { "id": "home", "op": "android.key", "args": { "key": "home" } },
+    { "id": "open", "op": "android.launch", "args": { "package": "com.android.settings", "fresh": true }, "timeoutMs": 15000 },
+    { "id": "apps", "op": "android.click", "args": { "target": { "resourceId": "title", "text": "Apps" } }, "timeoutMs": 15000 },
+    {
+      "id": "defaults",
+      "op": "android.read",
+      "args": { "target": { "resourceId": "title", "text": "Default apps" } },
+      "timeoutMs": 15000,
+      "post": [{ "equals": { "value": "${out.text}", "to": "Default apps" } }]
+    },
+    { "id": "back", "op": "android.click", "args": { "target": { "contentDesc": "Navigate up" } }, "timeoutMs": 15000 },
+    { "id": "main", "op": "android.wait", "args": { "target": { "resourceId": "search_bar_title" } }, "timeoutMs": 15000 },
+    { "id": "leave", "op": "android.key", "args": { "key": "home" } }
+  ],
+  "outputs": { "reached": "${steps.defaults.text}" }
+}

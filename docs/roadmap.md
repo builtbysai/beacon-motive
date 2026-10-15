@@ -37,7 +37,12 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 
 Decision still pending on importing OpenAdapt recordings through an isolated Python worker. See ADR 0004.
 
-## Milestone 3 — Platform expansion: not started
+## Milestone 3 — Platform expansion: Android started; macOS and Linux not started
+
+| Item | State | Evidence / limit |
+| --- | --- | --- |
+| Android via adb + UI Automator (ADR 0005) | Partial | Pixel 7a, Android 17: Settings tour passes (2 consecutive real runs, ~10.5 s); package-scoped dump filtering, selectors and scope refusal unit-tested. Slow (2.3 s per observation); no resident helper, scrolling/swipe, multi-touch, or non-ASCII text |
+| Audio on any platform | Not tested | deliberately excluded for now |
 
 macOS (AXUIElement; needs a Mac), Linux (AT-SPI; X11 first, Wayland via portals). Nothing is claimed for either.
 

@@ -15,3 +15,7 @@ Change since the first measurement: the Windows helper now caches resolved windo
 Engine process peak RSS about 115–137 MB (excludes Chrome and Calculator). One Windows 11 PC, Node 22.22, Chrome stable, Calculator 11.2607; no manual-speed comparison, so no claim about beating a person. Reproduce: `node --disable-warning=ExperimentalWarning scripts/bench.ts 10`.
 
 Not measured yet: CPU use, large trees, cold start of the helper, other hardware.
+
+## Android (Pixel 7a, Android 17, USB)
+
+`android-settings-tour` (7 steps), 2 real runs: 10.5 s and 10.9 s, both successful. Per op: android.key about 70–90 ms, android.launch 420–880 ms, each click/read/wait that observes the screen 2.2–2.8 s (dominated by `uiautomator dump`). Two runs is not a benchmark; it is a sanity figure.

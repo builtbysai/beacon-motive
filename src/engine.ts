@@ -4,12 +4,13 @@ import { browserAdapter } from "./adapters/browser.ts";
 import { coreAdapter } from "./adapters/core.ts";
 import { fsAdapter } from "./adapters/fs.ts";
 import { windowsAdapter } from "./adapters/windows.ts";
+import { androidAdapter } from "./adapters/android.ts";
 import { MotiveError, toErrorInfo, type ErrorInfo } from "./errors.ts";
 import type { RunRecord, StepRecord, Store } from "./store.ts";
 import { evaluate, interpolate, type Condition, type Scope, type Step, type Workflow } from "./workflow.ts";
 
 export type AdapterFactory = () => Adapter;
-export const defaultAdapters: AdapterFactory[] = [coreAdapter, fsAdapter, browserAdapter, windowsAdapter];
+export const defaultAdapters: AdapterFactory[] = [coreAdapter, fsAdapter, browserAdapter, windowsAdapter, androidAdapter];
 
 export interface RunEvent {
   type: "run.start" | "step.start" | "step.end" | "run.end";
