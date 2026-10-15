@@ -29,7 +29,7 @@ No browser is downloaded; the installed Chrome or Edge is used (set `MOTIVE_CHRO
 | Adapters: browser (Playwright), Windows (UI Automation via Rust sidecar), Android (adb, [ADR 0005](docs/decisions/0005-android-adapter.md)), filesystem, core | `src/adapters/`, `crates/win-uia` |
 | SQLite persistence: workflows, runs, steps, audit | `src/store.ts` |
 | CLI and authenticated loopback API | `src/cli.ts`, `src/server.ts`, [ADR 0003](docs/decisions/0003-local-api-security.md) |
-| Teach Mode (browser): record, compile, replay with new values | `src/record/`, [ADR 0004](docs/decisions/0004-teach-mode-browser.md) |
+| Teach Mode (browser): record, compile, merge demonstrations, replay with new values | `src/record/`, [ADR 0004](docs/decisions/0004-teach-mode-browser.md) |
 | Research and decisions | [`docs/research.md`](docs/research.md), [`docs/decisions/`](docs/decisions/) |
 | Measurements | [`docs/benchmarks.md`](docs/benchmarks.md) |
 

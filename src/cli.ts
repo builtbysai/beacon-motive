@@ -9,6 +9,7 @@ import { Store } from "./store.ts";
 import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
 import { compile } from "./record/compile.ts";
+import { induce } from "./record/induce.ts";
 import { recordSession } from "./record/recorder.ts";
 import { writeFileSync } from "node:fs";
 
@@ -22,6 +23,8 @@ const USAGE = `motive <command>
   history [run-id]                   past runs, or one run in detail
   record <url> --name <n> [--out f.json] [--expect-text t] [--save]
                                      Teach Mode: demonstrate in a visible browser, close it to finish
+  induce <a.json> <b.json> [...] --name <n> [--out f.json]
+                                     merge several recordings: variables vs constants
   inspect windows                    top-level windows (Windows)
   inspect tree --window <name> [--depth n]
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
@@ -158,6 +161,16 @@ async function main(): Promise<number> {
           store.audit("cli", "workflow.save", { name: workflow.name, recorded: true });
           console.log("Saved to the library.");
         } else console.log("Review the file, then: motive save " + out);
+        return 0;
+      }
+      case "induce": {
+        const files = positionals.slice(1);
+        if (files.length < 2 || !values.name) throw new Error("usage: motive induce <a.json> <b.json> [...] --name <name> [--out file.json]");
+        const { workflow, report } = induce(files.map((f) => parseWorkflow(JSON.parse(readFileSync(f, "utf8")))), values.name);
+        const out = values.out ?? `${values.name}.json`;
+        writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
+        console.log(`Wrote ${out} from ${files.length} demonstrations.`);
+        for (const l of report) console.log(`  ${l}`);
         return 0;
       }
       case "history": {

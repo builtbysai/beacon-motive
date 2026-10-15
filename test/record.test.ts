@@ -84,3 +84,34 @@ test("compile refuses to guess an action it cannot identify", () => {
   const steps: RecordedStep[] = [{ kind: "open", url: "https://example.com/" }, { kind: "click", verified: "ambiguous", label: "OK", target: { text: "OK", exact: false } }];
   assert.throws(() => compile(steps, { name: "x" }), AmbiguousRecording);
 });
+
+test("induction: two demonstrations separate a constant from a variable, then replay with a new value", { skip: !exe && "no Chrome/Edge" }, async () => {
+  const { induce, InductionMismatch } = await import("../src/record/induce.ts");
+  const demo = async (customer: string) => {
+    const steps = await demonstrate("order.html", async (page) => {
+      await page.getByLabel("Size").selectOption("Large");
+      await page.getByLabel("Customer").pressSequentially(customer);
+      await page.keyboard.press("Enter");
+      await page.getByRole("status").filter({ hasText: "Ordered" }).waitFor();
+      await page.waitForTimeout(100);
+    });
+    return compile(steps, { name: "order", expectText: `Ordered Large for ${customer}` }).workflow;
+  };
+  const a = await demo("Ada");
+  const b = await demo("Bob");
+  const { workflow, report } = induce([a, b], "order-merged");
+  assert.deepEqual(Object.keys(workflow.inputs), ["customer"], "size was Large both times, so it is a constant");
+  assert.ok(report.some((l) => /^size: the same in all 2/.test(l)));
+  assert.ok(report.some((l) => /^customer: varies/.test(l)));
+  const sel = workflow.steps.find((s) => s.op === "browser.select");
+  assert.equal(sel?.args.option, "Large");
+
+  const engine = new Engine(new Store(":memory:"));
+  const r = await engine.start(workflow, { customer: "Cy" }).done;
+  assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+
+  // Different structure is refused, never merged.
+  const shorter = { ...a, steps: a.steps.slice(0, -1) };
+  assert.throws(() => induce([a, shorter], "x"), InductionMismatch);
+  assert.throws(() => induce([a], "x"), /at least two/);
+});

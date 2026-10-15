@@ -31,7 +31,8 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Secret fields never captured | Done for password/otp/card-like fields | tested with a password and a card number; detection is heuristic |
 | Compile with variables, secrets, scopes | Done | recorded workflow replayed with different values and passed |
 | Expected-result verification | Partial | `--expect-text` only; no in-page marking |
-| Multi-demonstration induction, healing proposals | Not started | |
+| Multi-demonstration induction (`motive induce`) | Done for browser recordings | two demonstrations of an order form: select value constant, customer variable; merged workflow replayed with a third value. Structural differences are refused. Identical values are treated as constant and flagged, since they cannot prove it |
+| Healing proposals when a target stops matching | Not started | |
 | Windows (desktop) recording | Not started | needs UIA event subscription; design pending |
 | Edit/review UI | Not started | file is plain JSON for now |
 
@@ -56,6 +57,6 @@ Desktop app (Tauri 2 against the local API), installer and prebuilt helper, sche
 
 ## Next highest-value work
 
-1. Multi-demonstration induction (diff two recordings to separate constants from variables) and healing proposals when a recorded target stops matching.
+1. Healing proposals when a recorded target stops matching (store alternative candidates at record time; propose, never auto-apply).
 2. A Windows `win.type`/menu/list capability and a second real app (Notepad or a purpose-built fixture window), then Windows recording via UIA events.
 3. Real use of `motive record` by a person on a real website, to find what the fixtures hide (iframes, new tabs, shadow DOM).
