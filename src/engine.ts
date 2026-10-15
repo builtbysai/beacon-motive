@@ -162,6 +162,7 @@ export class Engine {
     const t0 = performance.now();
     let attempts = 0;
     const base = { index, stepId: step.id, op: step.op };
+    let parsedArgs: Record<string, unknown> | undefined;
     try {
       this.check(step.pre, scope, "precondition_failed", step.id);
       const args = interpolate(step.args, scope);
@@ -170,6 +171,7 @@ export class Engine {
         const i = parsed.error.issues[0];
         throw new MotiveError("invalid_args", `step ${step.id}: ${i?.path.join(".") || "args"}: ${i?.message}`);
       }
+      parsedArgs = parsed.data as Record<string, unknown>;
       const timeoutMs = step.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
       const stepDeadline = Date.now() + timeoutMs;
       const maxAttempts = step.retry?.max ?? 1;
@@ -190,10 +192,28 @@ export class Engine {
       scope.steps[step.id] = output!;
       return { ...base, status: "succeeded", durationMs: Math.round(performance.now() - t0), attempts, output: redact.value(output) };
     } catch (e) {
-      const info = toErrorInfo(signal.aborted ? abortReason(signal) : e);
+      let info = toErrorInfo(signal.aborted ? abortReason(signal) : e);
+      if (!signal.aborted && parsedArgs) info = await this.withProposals(info, op, step, parsedArgs, w, signal);
       scope.steps[step.id] = { error: info.message };
       return { ...base, status: "failed", durationMs: Math.round(performance.now() - t0), attempts, error: redact.value(info) };
     }
+  }
+
+  /**
+   * When a recorded target no longer resolves, tests the alternatives captured at record time and attaches those that
+   * resolve to exactly one control as proposals. Nothing is changed or retried: the run still fails and the user decides.
+   */
+  private async withProposals(info: ErrorInfo, op: OpDef, step: Step, args: Record<string, unknown>, w: Workflow, signal: AbortSignal): Promise<ErrorInfo> {
+    if (!["not_found", "ambiguous", "timeout"].includes(info.code) || !step.alternatives?.length || !op.probe || !("target" in args)) return info;
+    const proposals: { target: unknown }[] = [];
+    for (const alt of step.alternatives) {
+      if (signal.aborted) break;
+      const candidate = op.args.safeParse({ ...args, target: alt });
+      if (!candidate.success) continue;
+      const ok = await op.probe(candidate.data, { signal, budgetMs: 1500, scopes: w.scopes }).catch(() => false);
+      if (ok) proposals.push({ target: alt });
+    }
+    return proposals.length ? { ...info, details: { ...info.details, proposals } } : info;
   }
 
   /** One attempt: run the op, then check postconditions, polling idempotent ops until the step deadline. */

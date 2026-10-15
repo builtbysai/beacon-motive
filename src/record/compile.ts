@@ -7,6 +7,8 @@ export interface RecordedStep {
   kind: "open" | "click" | "fill" | "select" | "press";
   url?: string;
   target?: Target;
+  /** Other selectors verified to identify the same element at record time. */
+  alternatives?: Target[];
   /** unique: a Playwright locator matched exactly the demonstrated element. unverified: could not be checked (page changed). ambiguous: nothing identified it uniquely. */
   verified?: "unique" | "unverified" | "ambiguous";
   label?: string;
@@ -70,16 +72,17 @@ export function compile(recorded: RecordedStep[], opts: { name: string; expectTe
     }
     if (r.verified === "unverified") warnings.push(`${id}: "${r.label ?? "?"}" could not be checked for uniqueness because the page changed; verify it on replay.`);
     const target = r.target!;
-    if (r.kind === "click") steps.push({ id, op: "browser.click", args: { target }, onError: "fail" });
-    else if (r.kind === "press") steps.push({ id, op: "browser.press", args: { target, key: r.key }, onError: "fail" });
+    const alt = r.alternatives?.length ? { alternatives: r.alternatives as Record<string, unknown>[] } : {};
+    if (r.kind === "click") steps.push({ id, op: "browser.click", args: { target }, onError: "fail", ...alt });
+    else if (r.kind === "press") steps.push({ id, op: "browser.press", args: { target, key: r.key }, onError: "fail", ...alt });
     else if (r.kind === "fill") {
       const name = inputName(r.label, `field${i + 1}`);
       inputs[name] = r.secret ? { type: "string", secret: true } : { type: "string", secret: false, default: r.value ?? "" };
-      steps.push({ id, op: "browser.fill", args: { target, value: `\${inputs.${name}}` }, onError: "fail" });
+      steps.push({ id, op: "browser.fill", args: { target, value: `\${inputs.${name}}` }, onError: "fail", ...alt });
     } else {
       const name = inputName(r.label, `choice${i + 1}`);
       inputs[name] = { type: "string", secret: false, default: r.value ?? "" };
-      steps.push({ id, op: "browser.select", args: { target, option: `\${inputs.${name}}` }, onError: "fail" });
+      steps.push({ id, op: "browser.select", args: { target, option: `\${inputs.${name}}` }, onError: "fail", ...alt });
     }
   }
   if (opts.expectText) {

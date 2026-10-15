@@ -50,21 +50,26 @@ export class Recorder {
   private async handle(page: Page, ev: RawEvent): Promise<void> {
     const attr = `data-motive-${ev.seq}`;
     let chosen: Target | undefined;
+    const alternatives: Target[] = [];
     let verified: RecordedStep["verified"] = "ambiguous";
     let pageGone = false;
     try {
+      // Every candidate that identifies exactly the touched element is kept: the first is used, the rest are
+      // stored as alternatives so a later repair can be proposed if the first stops matching.
       for (const c of ev.candidates) {
         for (const exact of [false, true]) {
           const target = { ...c, exact } as Target;
           const loc = buildLocator(page, target);
           if ((await loc.count()) !== 1) continue;
           if (await loc.evaluate((el, a) => el.hasAttribute(a), attr)) {
-            chosen = c.css || !exact ? { ...c } : target;
-            verified = "unique";
+            const found = c.css || !exact ? { ...c } : target;
+            if (!chosen) {
+              chosen = found;
+              verified = "unique";
+            } else alternatives.push(found);
             break;
           }
         }
-        if (chosen) break;
       }
     } catch {
       pageGone = true; // the click navigated away before we could check
@@ -74,7 +79,7 @@ export class Recorder {
       verified = "unverified";
     }
     await page.evaluate((a) => document.querySelectorAll(`[${a}]`).forEach((e) => e.removeAttribute(a)), attr).catch(() => {});
-    const step: RecordedStep = { kind: ev.kind, verified, ...(ev.label ? { label: ev.label } : {}), ...(chosen ? { target: chosen } : {}) };
+    const step: RecordedStep = { kind: ev.kind, verified, ...(alternatives.length && !pageGone ? { alternatives: alternatives.slice(0, 3) } : {}), ...(ev.label ? { label: ev.label } : {}), ...(chosen ? { target: chosen } : {}) };
     if (ev.kind === "fill") {
       step.secret = Boolean(ev.secret);
       if (!ev.secret) step.value = ev.value ?? "";

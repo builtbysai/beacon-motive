@@ -148,6 +148,10 @@ export function windowsAdapter(): Adapter {
 
   const click: OpDef = {
     name: "win.click",
+    async probe(a: { window: object; target: object }) {
+      const c = win();
+      return c.call("element.find", a).then(() => true, () => false);
+    },
     idempotent: false,
     args: z.object({ window: WindowSel, target: TargetSel }).strict(),
     async run(a, ctx) {
@@ -159,6 +163,10 @@ export function windowsAdapter(): Adapter {
 
   const setValue: OpDef = {
     name: "win.setValue",
+    async probe(a: { window: object; target: object }) {
+      const c = win();
+      return c.call("element.find", a).then(() => true, () => false);
+    },
     idempotent: true,
     args: z.object({ window: WindowSel, target: TargetSel, value: z.string() }).strict(),
     async run(a, ctx) {
@@ -170,6 +178,10 @@ export function windowsAdapter(): Adapter {
 
   const read: OpDef = {
     name: "win.read",
+    async probe(a: { window: object; target: object }) {
+      const c = win();
+      return c.call("element.find", a).then(() => true, () => false);
+    },
     idempotent: true,
     args: z.object({ window: WindowSel, target: TargetSel }).strict(),
     async run(a, ctx) {

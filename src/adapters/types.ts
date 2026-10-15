@@ -14,6 +14,8 @@ export interface OpDef {
   idempotent: boolean;
   args: ZodType;
   run(args: any, ctx: OpContext): Promise<Record<string, unknown>>;
+  /** Side-effect-free check that these args would resolve to exactly one target right now. Used to test healing alternatives. */
+  probe?(args: any, ctx: OpContext): Promise<boolean>;
 }
 
 export interface Capability {

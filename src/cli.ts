@@ -10,6 +10,7 @@ import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
 import { compile } from "./record/compile.ts";
 import { induce } from "./record/induce.ts";
+import { applyProposal, proposalsFor } from "./heal.ts";
 import { recordSession } from "./record/recorder.ts";
 import { writeFileSync } from "node:fs";
 
@@ -25,6 +26,8 @@ const USAGE = `motive <command>
                                      Teach Mode: demonstrate in a visible browser, close it to finish
   induce <a.json> <b.json> [...] --name <n> [--out f.json]
                                      merge several recordings: variables vs constants
+  heal <run-id> [--apply <step>[:n] [--file wf.json]]
+                                     repairs proposed after a target stopped matching; applied only when you say so
   inspect windows                    top-level windows (Windows)
   inspect tree --window <name> [--depth n]
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
@@ -61,6 +64,8 @@ async function main(): Promise<number> {
       out: { type: "string" },
       "expect-text": { type: "string" },
       save: { type: "boolean", default: false },
+      apply: { type: "string" },
+      file: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -171,6 +176,29 @@ async function main(): Promise<number> {
         writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
         console.log(`Wrote ${out} from ${files.length} demonstrations.`);
         for (const l of report) console.log(`  ${l}`);
+        return 0;
+      }
+      case "heal": {
+        const run = store.getRun(arg ?? "");
+        if (!run) throw new Error("no such run");
+        const props = proposalsFor(run);
+        if (!values.apply) {
+          if (!props.length) console.log("No repairs were proposed for this run.");
+          for (const p of props) {
+            console.log(`${p.stepId} (${p.op}): ${p.problem}`);
+            p.targets.forEach((t, i) => console.log(`  [${i}] ${JSON.stringify(t)}`));
+          }
+          if (props.length) console.log("Apply one with: motive heal <run-id> --apply <step>:<n> [--file workflow.json]");
+          return 0;
+        }
+        const [stepId, n] = values.apply.split(":");
+        const original = values.file ? parseWorkflow(JSON.parse(readFileSync(values.file, "utf8"))) : store.getWorkflow(run.workflow);
+        if (!original) throw new Error("the workflow is not in the library; pass --file");
+        const fixed = applyProposal(original, stepId!, Number(n ?? 0), props);
+        if (values.file) writeFileSync(values.file, JSON.stringify(fixed, null, 2) + "\n");
+        else store.saveWorkflow(fixed);
+        store.audit("cli", "workflow.heal", { run: run.id, step: stepId, source: values.file ?? "library" });
+        console.log(`Updated ${values.file ?? `library workflow ${fixed.name}`}: ${stepId} now uses ${JSON.stringify(fixed.steps.find((x) => x.id === stepId)!.args.target)}`);
         return 0;
       }
       case "history": {

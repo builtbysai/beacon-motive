@@ -85,6 +85,14 @@ export function browserAdapter(): Adapter {
     return page;
   }
 
+  const probeTarget = async (a: { target: Target }): Promise<boolean> => {
+    try {
+      return (await locate(a.target).count()) === 1;
+    } catch {
+      return false;
+    }
+  };
+
   const open: OpDef = {
     name: "browser.open",
     idempotent: false,
@@ -116,6 +124,7 @@ export function browserAdapter(): Adapter {
 
   const click: OpDef = {
     name: "browser.click",
+    probe: probeTarget,
     idempotent: false,
     args: z.object({ target: Target }).strict(),
     run: (a: { target: Target }, ctx) =>
@@ -127,6 +136,7 @@ export function browserAdapter(): Adapter {
 
   const fill: OpDef = {
     name: "browser.fill",
+    probe: probeTarget,
     idempotent: true,
     args: z.object({ target: Target, value: z.string() }).strict(),
     run: (a: { target: Target; value: string }, ctx) =>
@@ -138,6 +148,7 @@ export function browserAdapter(): Adapter {
 
   const read: OpDef = {
     name: "browser.read",
+    probe: probeTarget,
     idempotent: true,
     args: z.object({ target: Target }).strict(),
     run: (a: { target: Target }, ctx) =>
@@ -151,6 +162,7 @@ export function browserAdapter(): Adapter {
 
   const select: OpDef = {
     name: "browser.select",
+    probe: probeTarget,
     idempotent: true,
     args: z.object({ target: Target, option: z.string() }).strict(),
     run: (a: { target: Target; option: string }, ctx) =>
@@ -162,6 +174,7 @@ export function browserAdapter(): Adapter {
 
   const press: OpDef = {
     name: "browser.press",
+    probe: probeTarget,
     idempotent: false,
     args: z.object({ target: Target, key: z.enum(["Enter", "Escape", "Tab"]) }).strict(),
     run: (a: { target: Target; key: string }, ctx) =>
@@ -173,6 +186,7 @@ export function browserAdapter(): Adapter {
 
   const wait: OpDef = {
     name: "browser.wait",
+    probe: probeTarget,
     idempotent: true,
     args: z.object({ target: Target, state: z.enum(["visible", "hidden", "attached", "detached"]).default("visible") }).strict(),
     run: (a: { target: Target; state: "visible" | "hidden" | "attached" | "detached" }, ctx) =>

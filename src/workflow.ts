@@ -32,6 +32,9 @@ const Step = z
     // postcondition re-runs the step until the timeout instead of failing at once.
     post: z.array(Condition).optional(),
     onError: z.enum(["fail", "continue"]).default("fail"),
+    // Other selectors that identified the same control when it was recorded. Used only to propose a repair when
+    // args.target stops matching; never applied automatically.
+    alternatives: z.array(z.record(z.string(), z.unknown())).max(6).optional(),
   })
   .strict();
 export type Step = z.infer<typeof Step>;

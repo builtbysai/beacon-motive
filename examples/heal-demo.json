@@ -1,0 +1,19 @@
+{
+  "format": "motive.workflow/1",
+  "name": "heal-demo",
+  "description": "The button was renamed on the page, so the recorded target is stale. The run fails and proposes the alternative that still matches; apply it with: motive heal <run-id> --apply click --file examples/heal-demo.json",
+  "inputs": { "name": { "type": "string", "default": "Ada" } },
+  "scopes": { "dirs": ["./examples"] },
+  "steps": [
+    { "id": "open", "op": "browser.open", "args": { "url": "./examples/fixtures/form-v2.html" } },
+    { "id": "fill", "op": "browser.fill", "args": { "target": { "label": "Your name" }, "value": "${inputs.name}" } },
+    {
+      "id": "click",
+      "op": "browser.click",
+      "args": { "target": { "role": "button", "name": "Greet" } },
+      "alternatives": [{ "role": "link", "name": "Greet" }, { "css": "#go" }],
+      "timeoutMs": 1500
+    },
+    { "id": "greeting", "op": "browser.read", "args": { "target": { "role": "status" } }, "post": [{ "contains": { "value": "${out.text}", "text": "Hello, ${inputs.name}" } }] }
+  ]
+}
