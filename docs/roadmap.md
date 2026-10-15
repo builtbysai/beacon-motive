@@ -34,7 +34,8 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Multi-demonstration induction (`motive induce`) | Done for browser recordings | two demonstrations of an order form: select value constant, customer variable; merged workflow replayed with a third value. Structural differences are refused. Identical values are treated as constant and flagged, since they cannot prove it |
 | Healing proposals when a target stops matching | Done for browser and Windows controls | record → relabel the page → replay fails with one validated proposal (ambiguous selectors rejected) → `motive heal --apply` → replay passes. Alternatives only; no fuzzy search; not for Android. ADR 0006 |
 | Windows (desktop) recording (`motive record-win`, ADR 0007) | Partial | Calculator: 5 recorded invocations compiled and replayed to the right result. Native WinForms app: typed values, password (not captured), combo and list choices recorded and replayed. WinForms raises no events for button presses or checkbox toggles so those are not recorded there; real mouse-click events, WPF/Qt/Electron/Java untested; interactive Ctrl-C session not used by a person yet |
-| Edit/review UI | Not started | file is plain JSON for now |
+| Edit/review UI | Partial | desktop app shows a review screen (inputs, steps, warnings) before save; no editing of steps yet |
+| Teach Mode through the API (`/v1/record`, ADR 0010) | Done (service); not yet used by a person | lifecycle tested with a stand-in recorder; browser path started and finished from the desktop app against a real Chrome |
 
 Decision still pending on importing OpenAdapt recordings through an isolated Python worker. See ADR 0004.
 
@@ -56,7 +57,7 @@ Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervi
 
 | Item | State | Evidence / limit |
 | --- | --- | --- |
-| Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. No Teach Mode, inspector, permissions or editing screens; needs the repo checkout and `node`; unsigned, no installer |
+| Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. Teach Mode screen added (ADR 0010: visible recording, review, explicit save; verified with a real Chrome but an empty demonstration). No inspector, permissions or editing screens; needs the repo checkout and `node`; unsigned, no installer |
 
 Not started: installer and prebuilt helper, scheduling, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
 

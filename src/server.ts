@@ -3,6 +3,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import { Engine, type RunEvent } from "./engine.ts";
 import { MotiveError, toErrorInfo } from "./errors.ts";
+import { RecordingManager, RecordSpec } from "./recording.ts";
 import { parseWorkflow } from "./workflow.ts";
 
 const MAX_BODY = 1_000_000;
@@ -17,7 +18,7 @@ export interface ServerHandle {
 }
 
 /** Local API (ADR 0003): loopback only, bearer token, no browser origins, no CORS. */
-export async function startServer(engine: Engine, token: string, port = 0): Promise<ServerHandle> {
+export async function startServer(engine: Engine, token: string, port = 0, recordings = new RecordingManager(engine.store)): Promise<ServerHandle> {
   const tokenDigest = digest(token);
   const store = engine.store;
 
@@ -121,8 +122,27 @@ export async function startServer(engine: Engine, token: string, port = 0): Prom
           return;
         }
       }
+      if (parts[1] === "record") {
+        if (m === "POST" && parts.length === 2) {
+          const spec = RecordSpec.safeParse(await body());
+          if (!spec.success) throw new MotiveError("invalid_args", `${spec.error.issues[0]?.path.join(".") || "body"}: ${spec.error.issues[0]?.message}`);
+          return send(202, { id: recordings.start(spec.data).id });
+        }
+        const id = parts[2];
+        if (id && m === "GET" && parts.length === 3) {
+          const s = recordings.get(id);
+          return s ? send(200, s) : send(404, { error: { code: "not_found", message: "no such recording" } });
+        }
+        if (id && m === "POST" && parts[3] === "finish") return send(200, await recordings.finish(id));
+        if (id && m === "POST" && parts[3] === "save") return send(200, { saved: recordings.save(id).name });
+        if (id && m === "DELETE" && parts.length === 3) {
+          await recordings.discard(id);
+          return send(200, { discarded: true });
+        }
+      }
       if (m === "POST" && parts[1] === "stop") {
         const n = engine.stopAll("emergency stop through the API");
+        await recordings.stopAll();
         store.audit("api", "stop", { cancelled: n });
         return send(200, { cancelled: n });
       }

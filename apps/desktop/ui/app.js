@@ -96,6 +96,7 @@ async function show(view) {
     if (view === "workflows") await workflowsView();
     else if (view === "runs") await runsView();
     else if (view === "audit") await auditView();
+    else if (view === "teach") await teachView();
     else if (view === "run") await runView(state.runId);
   } catch (e) {
     clear();
@@ -216,3 +217,87 @@ async function auditView() {
 for (const b of document.querySelectorAll(".nav")) b.addEventListener("click", () => show(b.dataset.view));
 show("workflows");
 setInterval(refreshEngine, 5000);
+
+// ---- Teach Mode --------------------------------------------------------------------------------------------
+
+async function teachView() {
+  clear();
+  if (state.recId) return recordingView();
+  const kind = h("select", { id: "rec-kind" }, h("option", { value: "browser" }, "A website in a browser"), h("option", { value: "windows" }, "A Windows app"));
+  const name = h("input", { id: "rec-name", type: "text", placeholder: "e.g. submit-timesheet", autocomplete: "off" });
+  const url = h("input", { id: "rec-url", type: "text", placeholder: "https://…", autocomplete: "off" });
+  const win = h("input", { id: "rec-window", type: "text", placeholder: "Title of the app window", autocomplete: "off" });
+  const cmd = h("input", { id: "rec-command", type: "text", placeholder: "Optional: program to launch first", autocomplete: "off" });
+  const expectText = h("input", { id: "rec-expect", type: "text", placeholder: "Optional: text that proves it worked", autocomplete: "off" });
+  const browserRows = [h("label", { for: "rec-url" }, "Start page"), url, h("label", { for: "rec-expect" }, "Expect on page"), expectText];
+  const winRows = [h("label", { for: "rec-window" }, "Window"), win, h("label", { for: "rec-command" }, "Launch"), cmd];
+  const form = h("form", { class: "inputs" }, h("label", { for: "rec-kind" }, "Teach me"), kind, h("label", { for: "rec-name" }, "Workflow name"), name);
+  const swap = () => {
+    for (const el of [...browserRows, ...winRows]) el.remove();
+    form.append(...(kind.value === "browser" ? browserRows : winRows));
+  };
+  kind.addEventListener("change", swap);
+  swap();
+  const go = h("button", { class: "primary", type: "submit" }, "Start recording");
+  form.append(h("span", {}), h("div", { class: "row tight" }, go));
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const spec = kind.value === "browser" ? { kind: "browser", name: name.value.trim(), url: url.value.trim(), ...(expectText.value.trim() ? { expectText: expectText.value.trim() } : {}) } : { kind: "windows", name: name.value.trim(), window: win.value.trim(), ...(cmd.value.trim() ? { command: cmd.value.trim() } : {}) };
+    go.disabled = true;
+    try {
+      const { id } = await api("POST", "/v1/record", spec);
+      state.recId = id;
+      teachView();
+    } catch (e) {
+      go.disabled = false;
+      alert(String(e));
+    }
+  });
+  main.append(
+    h("h1", {}, "Teach Mode"),
+    h("p", { class: "sub" }, "Show it once; replay it with new values. Recording is always visible: a browser window opens, or a red indicator appears over the app. Passwords and card numbers are never captured."),
+    h("div", { class: "card" }, form),
+  );
+}
+
+async function recordingView() {
+  const id = state.recId;
+  const paint = async () => {
+    const r = await api("GET", `/v1/record/${encodeURIComponent(id)}`);
+    if (r.status === "starting" || r.status === "recording") {
+      return fill(main,
+        h("div", { class: "rec-banner", role: "status" }, h("span", { class: "rec-dot", "aria-hidden": "true" }), r.status === "starting" ? "Starting…" : `Recording “${r.name}”`),
+        h("p", { class: "sub" }, r.kind === "browser" ? "Do the task in the browser window that opened. Press Finish here, or close that window, when you are done." : "Do the task in the app window. Press Finish here when you are done."),
+        h("div", { class: "row" },
+          h("button", { class: "primary", type: "button", onclick: async () => { try { await api("POST", `/v1/record/${encodeURIComponent(id)}/finish`); } catch (e) { alert(String(e)); } paint(); } }, "Finish"),
+          h("button", { class: "ghost", type: "button", onclick: () => discard(id) }, "Discard")));
+    }
+    if (state.poll) { clearInterval(state.poll); state.poll = null; }
+    if (r.status === "failed") {
+      return fill(main, h("h1", {}, "Recording failed"), h("div", { class: "banner" }, `${r.error.code}: ${r.error.message}`), h("div", { class: "row" }, h("button", { class: "ghost", type: "button", onclick: () => { state.recId = null; teachView(); } }, "Back")));
+    }
+    if (r.status === "discarded") { state.recId = null; return teachView(); }
+    const w = r.workflow;
+    const inputs = Object.entries(w.inputs);
+    fill(main,
+      h("h1", {}, "Review “", w.name, "”"),
+      h("p", { class: "sub" }, `${r.steps} recorded ${r.steps === 1 ? "action" : "actions"} became ${w.steps.length} ${w.steps.length === 1 ? "step" : "steps"}. Nothing is saved until you save it.`),
+      r.warnings.length ? h("div", { class: "banner" }, h("strong", {}, "Check these"), h("ul", {}, r.warnings.map((x) => h("li", {}, x)))) : null,
+      h("h2", {}, "Inputs (change per run)"),
+      inputs.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Name"), h("th", {}, "Type"), h("th", {}, "Demonstrated value"))),
+        h("tbody", {}, inputs.map(([k, d]) => h("tr", {}, h("td", {}, k), h("td", {}, d.type, d.secret ? " · secret" : ""), h("td", {}, d.secret ? "not recorded" : String(d.default ?? "")))))) : h("p", { class: "sub" }, "None: it does the same thing every time."),
+      h("h2", {}, `Steps (${w.steps.length})`),
+      h("ol", { class: "steps card" }, w.steps.map((s) => h("li", { class: "plain" }, s.id, " ", h("span", { class: "mono" }, s.op)))),
+      h("div", { class: "row" },
+        h("button", { class: "primary", type: "button", onclick: async () => { try { await api("POST", `/v1/record/${encodeURIComponent(id)}/save`); state.recId = null; state.workflow = w.name; show("workflows"); } catch (e) { alert(String(e)); } } }, "Save to library"),
+        h("button", { class: "ghost", type: "button", onclick: () => discard(id) }, "Discard")));
+  };
+  await paint();
+  state.poll = setInterval(() => paint().catch(() => {}), 700);
+}
+
+async function discard(id) {
+  try { await api("DELETE", `/v1/record/${encodeURIComponent(id)}`); } catch (e) { alert(String(e)); }
+  state.recId = null;
+  show("teach");
+}
