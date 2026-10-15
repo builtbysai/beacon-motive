@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { Engine, type RunEvent } from "./engine.ts";
 import { MotiveError, toErrorInfo } from "./errors.ts";
 import { RecordingManager, RecordSpec } from "./recording.ts";
+import { inspectTree, inspectWindows } from "./inspect.ts";
 import { Scheduler, ScheduleSpec } from "./scheduler.ts";
 import { parseWorkflow } from "./workflow.ts";
 
@@ -121,6 +122,17 @@ export async function startServer(engine: Engine, token: string, port = 0, recor
           engine.events.on(`run:${id}`, on);
           req.on("close", () => engine.events.off(`run:${id}`, on));
           return;
+        }
+      }
+      if (parts[1] === "inspect" && m === "GET") {
+        if (parts[2] === "windows") {
+          store.audit("api", "inspect.windows");
+          return send(200, { windows: await inspectWindows() });
+        }
+        if (parts[2] === "tree") {
+          const window = url.searchParams.get("window") ?? "";
+          store.audit("api", "inspect.tree", { window });
+          return send(200, { tree: await inspectTree(window, Number(url.searchParams.get("depth") ?? 3)) });
         }
       }
       if (parts[1] === "schedules") {

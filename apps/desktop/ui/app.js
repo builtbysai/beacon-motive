@@ -98,6 +98,8 @@ async function show(view) {
     else if (view === "audit") await auditView();
     else if (view === "teach") await teachView();
     else if (view === "schedules") await schedulesView();
+    else if (view === "inspector") await inspectorView();
+    else if (view === "permissions") await permissionsView();
     else if (view === "run") await runView(state.runId);
   } catch (e) {
     clear();
@@ -341,4 +343,65 @@ async function schedulesView() {
     workflows.length ? h("div", { class: "card" }, form) : h("p", { class: "empty" }, "Save a workflow first."),
     h("h2", {}, "Active schedules"),
     schedules.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Workflow"), h("th", {}, "Repeats"), h("th", {}, "State"), h("th", {}, "Last firing"), h("th", {}, ""))), h("tbody", {}, rows)) : h("p", { class: "empty" }, "None yet."));
+}
+
+// ---- Permissions: what the engine can reach, and what each workflow may touch ----------------------------------
+
+async function permissionsView() {
+  const [{ adapters }, { workflows }] = await Promise.all([api("GET", "/v1/capabilities"), api("GET", "/v1/workflows")]);
+  const full = await Promise.all(workflows.map((w) => api("GET", `/v1/workflows/${encodeURIComponent(w.name)}`)));
+  clear();
+  const adapterRows = adapters.map((a) => h("tr", {}, h("td", {}, a.adapter), h("td", {}, h("span", { class: `st ${a.available ? "succeeded" : "failed"}` }, a.available ? "available" : "unavailable")), h("td", {}, a.reason || ""), h("td", { class: "mono" }, a.ops.join(" "))));
+  const scopeCell = (list) => (list.length ? h("div", { class: "chips" }, list.map((x) => h("span", { class: "chip" }, x))) : h("span", { class: "sub" }, "none"));
+  const wfRows = full.map((w) => h("tr", {}, h("td", {}, w.name), h("td", {}, scopeCell(w.scopes.hosts)), h("td", {}, scopeCell(w.scopes.dirs)), h("td", {}, scopeCell(w.scopes.apps)),
+    h("td", {}, Object.entries(w.inputs).filter(([, d]) => d.secret).map(([k]) => k).join(", ") || "none")));
+  fill(main,
+    h("h1", {}, "Permissions"),
+    h("p", { class: "sub" }, "Workflows can touch only what they declare, and adapters refuse anything else. Nothing here is sent anywhere. The engine never elevates, never reads password fields, and never runs shell commands."),
+    h("h2", {}, "What this machine can automate"),
+    h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Adapter"), h("th", {}, "State"), h("th", {}, "Why not"), h("th", {}, "Operations"))), h("tbody", {}, adapterRows)),
+    h("h2", {}, "What each workflow may touch"),
+    full.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Workflow"), h("th", {}, "Websites"), h("th", {}, "Folders"), h("th", {}, "Apps"), h("th", {}, "Secret inputs"))), h("tbody", {}, wfRows)) : h("p", { class: "empty" }, "No workflows saved."));
+}
+
+// ---- Inspector: read-only view of a Windows app's controls -----------------------------------------------------
+
+async function inspectorView() {
+  clear();
+  const out = h("div", {});
+  const list = h("div", { class: "list" });
+  const depth = h("input", { id: "insp-depth", type: "number", min: "1", max: "6", value: "3" });
+  main.append(
+    h("h1", {}, "Inspector"),
+    h("p", { class: "sub" }, "Shows the controls of a Windows app (names, automation ids, types) so you can write or fix selectors. It reads control metadata only, never what is typed into fields, and password controls are never read. Each look is written to the audit log."),
+    h("div", { class: "row" }, h("label", { for: "insp-depth" }, "Depth"), depth, h("button", { class: "ghost", type: "button", onclick: loadWindows }, "Refresh windows")),
+    h("div", { class: "split" }, list, out),
+  );
+  async function loadWindows() {
+    list.replaceChildren(h("div", { class: "empty pad" }, "Loading…"));
+    try {
+      const { windows } = await api("GET", "/v1/inspect/windows");
+      const named = windows.filter((w) => w.name && w.controlType === "Window");
+      list.replaceChildren(...(named.length ? named.map((w) => h("button", { class: "item", type: "button", onclick: () => loadTree(w.name) }, w.name, h("small", {}, w.className))) : [h("div", { class: "empty pad" }, "No windows found.")]));
+    } catch (e) {
+      list.replaceChildren(h("div", { class: "empty pad" }, String(e)));
+    }
+  }
+  async function loadTree(name) {
+    out.replaceChildren(h("div", { class: "empty" }, "Reading…"));
+    try {
+      const { tree } = await api("GET", `/v1/inspect/tree?window=${encodeURIComponent(name)}&depth=${encodeURIComponent(depth.value)}`);
+      const rows = [];
+      const walk = (n, d) => {
+        const sel = n.automationId ? `automationId: ${n.automationId}` : n.name ? `name: ${n.name}` : "";
+        rows.push(h("li", { class: "plain tree" , "data-depth": String(d) }, h("span", { class: "mono" }, n.controlType), " ", n.name || h("span", { class: "sub" }, "(no name)"), n.password ? h("span", { class: "chip" }, "password: never read") : null, sel ? h("div", { class: "mono sub" }, sel) : null));
+        for (const c of n.children || []) walk(c, d + 1);
+      };
+      walk(tree, 0);
+      out.replaceChildren(h("h2", {}, name), h("ol", { class: "steps card" }, rows));
+    } catch (e) {
+      out.replaceChildren(h("div", { class: "banner" }, String(e)));
+    }
+  }
+  loadWindows();
 }

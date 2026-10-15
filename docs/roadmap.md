@@ -57,7 +57,7 @@ Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervi
 
 | Item | State | Evidence / limit |
 | --- | --- | --- |
-| Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. Teach Mode screen added (ADR 0010: visible recording, review, explicit save; verified with a real Chrome but an empty demonstration). No inspector, permissions or editing screens; needs the repo checkout and `node`; unsigned, no installer |
+| Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. Teach Mode screen added (ADR 0010: visible recording, review, explicit save; verified with a real Chrome but an empty demonstration). Inspector (Windows control tree) and read-only Permissions screens added (ADR 0012). No step editing; needs the repo checkout and `node`; unsigned, no installer |
 
 | Scheduling (`/v1/schedules`, ADR 0011) | Partial | every-N-minutes and daily-at-time triggers; fires only while the engine runs; busy runs are skipped, never queued; secrets never stored. Fake-clock tests plus one real firing from the desktop app. No cron, event triggers, catch-up or launch-at-login |
 

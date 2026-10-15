@@ -71,16 +71,18 @@ struct Status {
     started_here: bool,
 }
 
+// Commands are async so they run on a worker thread, not the UI thread: the Inspector asks Windows to describe every
+// window, including this one, and a blocked UI thread would stall that for ten seconds.
 #[tauri::command]
-fn engine_status(engine: State<Engine>) -> Status {
+async fn engine_status(engine: State<'_, Engine>) -> Result<Status, String> {
     let running = call("GET", "/v1/capabilities", None).is_ok();
     let started_here = engine.0.lock().map(|g| g.is_some()).unwrap_or(false);
-    Status { running, port: port(), started_here }
+    Ok(Status { running, port: port(), started_here })
 }
 
 /// Starts `motive serve` with fixed arguments. Nothing from the UI is passed to the process.
 #[tauri::command]
-fn start_engine(engine: State<Engine>) -> Result<(), String> {
+async fn start_engine(engine: State<'_, Engine>) -> Result<(), String> {
     let mut guard = engine.0.lock().map_err(|_| "engine lock poisoned")?;
     if guard.is_some() {
         return Ok(());
@@ -101,7 +103,7 @@ fn start_engine(engine: State<Engine>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn api(method: String, path: String, body: Option<Value>) -> Result<Value, String> {
+async fn api(method: String, path: String, body: Option<Value>) -> Result<Value, String> {
     if !["GET", "PUT", "POST", "DELETE"].contains(&method.as_str()) {
         return Err("method not allowed".into());
     }

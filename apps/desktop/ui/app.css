@@ -137,3 +137,11 @@ select { font: inherit; color: inherit; background: var(--bg); border: 1px solid
 .rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--stop); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+.steps li.tree { padding-left: 0; }
+.steps li.tree[data-depth="1"] { padding-left: 16px; }
+.steps li.tree[data-depth="2"] { padding-left: 32px; }
+.steps li.tree[data-depth="3"] { padding-left: 48px; }
+.steps li.tree[data-depth="4"] { padding-left: 64px; }
+.steps li.tree[data-depth="5"] { padding-left: 80px; }
+.steps li.tree[data-depth="6"] { padding-left: 96px; }
+.sub.mono { margin: 0; }
