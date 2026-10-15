@@ -1,0 +1,26 @@
+{
+  "format": "motive.workflow/1",
+  "name": "windows-calculator-add",
+  "description": "Adds two single-digit numbers in the real Windows Calculator through UI Automation, verifies the displayed result, and closes it. Windows only; English UI names.",
+  "inputs": {
+    "a": { "type": "number", "default": 2 },
+    "b": { "type": "number", "default": 3 }
+  },
+  "scopes": { "apps": ["calc.exe"] },
+  "steps": [
+    { "id": "open", "op": "win.launch", "args": { "command": "calc.exe", "window": { "name": "Calculator" } }, "timeoutMs": 15000 },
+    { "id": "clear", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "clearButton" } } },
+    { "id": "digitA", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "num${inputs.a}Button" } } },
+    { "id": "plus", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "plusButton" } } },
+    { "id": "digitB", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "num${inputs.b}Button" } } },
+    { "id": "equals", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "equalButton" } } },
+    {
+      "id": "result",
+      "op": "win.read",
+      "args": { "window": { "name": "Calculator" }, "target": { "automationId": "CalculatorResults" } },
+      "post": [{ "matches": { "value": "${out.text}", "pattern": "^Display is \\d+$" } }]
+    },
+    { "id": "close", "op": "win.close", "args": { "window": { "name": "Calculator" } } }
+  ],
+  "outputs": { "display": "${steps.result.text}" }
+}

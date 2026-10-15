@@ -1,0 +1,24 @@
+{
+  "name": "beacon-motive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Local-first, AI-optional automation engine for browsers and desktop apps.",
+  "engines": { "node": ">=22.13" },
+  "bin": { "motive": "./src/cli.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.ts\"",
+    "build:win": "cargo build --release --manifest-path crates/win-uia/Cargo.toml",
+    "motive": "node --disable-warning=ExperimentalWarning src/cli.ts"
+  },
+  "dependencies": {
+    "playwright-core": "1.64.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

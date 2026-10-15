@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greeter fixture</title>
+</head>
+<body>
+<main>
+  <h1>Greeter</h1>
+  <label for="name">Your name</label>
+  <input id="name" type="text">
+  <label for="pw">Password</label>
+  <input id="pw" type="password">
+  <button id="go" type="button">Greet</button>
+  <p id="out" role="status"></p>
+</main>
+<script>
+  // The answer arrives after a delay, so a replay that does not wait for state fails.
+  document.getElementById("go").addEventListener("click", () => {
+    const name = document.getElementById("name").value;
+    const pw = document.getElementById("pw").value;
+    document.getElementById("out").textContent = "";
+    setTimeout(() => {
+      document.getElementById("out").textContent = "Hello, " + name + "!" + (pw ? " (password of " + pw.length + " characters received)" : "");
+    }, 400);
+  });
+</script>
+</body>
+</html>

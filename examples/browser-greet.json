@@ -1,0 +1,23 @@
+{
+  "format": "motive.workflow/1",
+  "name": "browser-greet",
+  "description": "Fills a local form and verifies the greeting that appears after a delay. Run from the repository root.",
+  "inputs": {
+    "name": { "type": "string", "default": "Ada" },
+    "password": { "type": "string", "secret": true }
+  },
+  "scopes": { "dirs": ["./examples"] },
+  "steps": [
+    { "id": "open", "op": "browser.open", "args": { "url": "./examples/fixtures/form.html" } },
+    { "id": "fillName", "op": "browser.fill", "args": { "target": { "label": "Your name" }, "value": "${inputs.name}" } },
+    { "id": "fillPw", "op": "browser.fill", "args": { "target": { "label": "Password" }, "value": "${inputs.password}" } },
+    { "id": "go", "op": "browser.click", "args": { "target": { "role": "button", "name": "Greet" } } },
+    {
+      "id": "greeting",
+      "op": "browser.read",
+      "args": { "target": { "role": "status" } },
+      "post": [{ "contains": { "value": "${out.text}", "text": "Hello, ${inputs.name}!" } }]
+    }
+  ],
+  "outputs": { "greeting": "${steps.greeting.text}" }
+}
