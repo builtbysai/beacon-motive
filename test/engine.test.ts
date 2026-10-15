@@ -122,6 +122,62 @@ test("forEach: runs once per item with loop.item/index, aggregates results, stop
   assert.equal(big.error?.code, "invalid_args");
 });
 
+test("flow.call: runs a stored subflow with inputs, returns its outputs, records prefixed steps", async () => {
+  const p = probe();
+  const e = engineWith(p.factory);
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "child", inputs: { who: { type: "string" } }, steps: [{ id: "hi", op: "probe.echo", args: { value: "hello ${inputs.who}" } }], outputs: { greeting: "${steps.hi.note}" } }));
+  const parent = wf(
+    [
+      { id: "first", op: "probe.record", args: { tag: "before" } },
+      { id: "sub", op: "flow.call", args: { workflow: "child", inputs: { who: "${inputs.name}" } } },
+      { id: "after", op: "probe.record", args: { tag: "${steps.sub.greeting}" } },
+    ],
+    { inputs: { name: { type: "string" } }, outputs: { said: "${steps.sub.greeting}" } },
+  );
+  const r = await e.start(parent, { name: "Ada" }).done;
+  assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+  assert.deepEqual(p.state.ran, ["before", "got hello Ada"]);
+  assert.deepEqual(r.steps.map((s) => s.stepId), ["first", "sub/hi", "sub", "after"]);
+  assert.deepEqual(r.steps.map((s) => s.index), [0, 1, 2, 3]);
+  assert.equal(r.outputs?.said, "got hello Ada");
+});
+
+test("flow.call: a subflow cannot widen scopes, cannot call itself, and is refused before anything runs", async () => {
+  const p = probe();
+  const e = engineWith(p.factory);
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "wide", scopes: { dirs: ["/elsewhere"] }, steps: [{ id: "x", op: "probe.record", args: { tag: "wide" } }] }));
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "loop-a", steps: [{ id: "c", op: "flow.call", args: { workflow: "loop-b" } }] }));
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "loop-b", steps: [{ id: "c", op: "flow.call", args: { workflow: "loop-a" } }] }));
+  const first = { id: "first", op: "probe.record", args: { tag: "must-not-run" } };
+
+  const widen = await e.start(wf([first, { id: "w", op: "flow.call", args: { workflow: "wide" } }])).done;
+  assert.equal(widen.error?.code, "scope_denied");
+  const cycle = await e.start(wf([first, { id: "c", op: "flow.call", args: { workflow: "loop-a" } }])).done;
+  assert.equal(cycle.error?.code, "invalid_workflow");
+  const missing = await e.start(wf([first, { id: "m", op: "flow.call", args: { workflow: "nope" } }])).done;
+  assert.equal(missing.error?.code, "not_found");
+  assert.deepEqual(p.state.ran, [], "nothing runs when a subflow is refused up front");
+});
+
+test("flow.call: secrets must be passed explicitly; a failing subflow fails the caller with its name", async () => {
+  const p = probe();
+  const e = engineWith(p.factory);
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "needs-secret", inputs: { pw: { type: "string", secret: true } }, steps: [{ id: "s", op: "probe.record", args: { tag: "x" } }] }));
+  e.store.saveWorkflow(parseWorkflow({ format: "motive.workflow/1", name: "breaks", steps: [{ id: "f", op: "probe.flaky", args: { failTimes: 5 } }] }));
+  process.env.MOTIVE_SECRET_PW = "from-env";
+  try {
+    const noPass = await e.start(wf([{ id: "a", op: "flow.call", args: { workflow: "needs-secret" } }])).done;
+    assert.equal(noPass.error?.code, "invalid_args");
+    assert.match(noPass.error?.message ?? "", /must be passed explicitly/);
+  } finally {
+    delete process.env.MOTIVE_SECRET_PW;
+  }
+  const bad = await e.start(wf([{ id: "b", op: "flow.call", args: { workflow: "breaks" } }])).done;
+  assert.equal(bad.status, "failed");
+  assert.match(bad.error?.message ?? "", /subflow breaks:/);
+  assert.deepEqual(bad.steps.map((s) => s.stepId), ["b/f", "b"]);
+});
+
 test("bounded retry recovers a retryable failure and records attempts", async () => {
   const p = probe();
   const e = engineWith(p.factory);

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { z } from "zod";
 import type { Adapter, Capability, OpDef } from "./adapters/types.ts";
 import { browserAdapter } from "./adapters/browser.ts";
 import { coreAdapter } from "./adapters/core.ts";
@@ -27,6 +28,28 @@ export interface ActiveRun {
 
 const DEFAULT_STEP_TIMEOUT_MS = 30_000;
 const POLL_MS = 50;
+const CALL_OP = "flow.call";
+const MAX_CALL_DEPTH = 3;
+const CallArgs = z.object({ workflow: z.string().min(1), inputs: z.record(z.string(), z.unknown()).default({}) }).strict();
+
+interface SeqCtx {
+  ops: Map<string, { op: OpDef; adapter: Adapter }>;
+  record: RunRecord;
+  signal: AbortSignal;
+  redact: Redactor;
+  prefix: string;
+  depth: number;
+  chain: string[];
+}
+
+/** A subflow may only touch what its caller may touch. */
+function requireScopeSubset(parent: Workflow, child: Workflow, stepId: string): void {
+  for (const kind of ["hosts", "dirs", "apps"] as const) {
+    const extra = child.scopes[kind].filter((x) => !parent.scopes[kind].includes(x));
+    if (extra.length) throw new MotiveError("scope_denied", `step ${stepId}: subflow ${child.name} wants ${kind} the caller does not have: ${extra.join(", ")}`);
+  }
+}
+
 
 export class Engine {
   store: Store;
@@ -109,53 +132,10 @@ export class Engine {
     this.emit({ type: "run.start", runId: record.id });
 
     try {
-      // Fail before any side effect if the workflow cannot run here at all.
-      for (const s of w.steps) {
-        const found = ops.get(s.op);
-        if (!found) throw new MotiveError("unknown_op", `step ${s.id}: unknown operation ${s.op}`);
-        const cap = found.adapter.capability();
-        if (!cap.available) throw new MotiveError("unsupported", `step ${s.id}: ${s.op} is unavailable: ${cap.reason}`);
-      }
-
-      for (const step of w.steps) {
-        if (signal.aborted) throw abortReason(signal);
-        const { op } = ops.get(step.op)!;
-        this.emit({ type: "step.start", runId: record.id, step: { stepId: step.id, op: step.op } });
-        const skip = step.when?.length ? whenSkipReason(step.when, scope) : undefined;
-        const finish = (sr: StepRecord) => {
-          this.store.addStep(record.id, sr);
-          record.steps.push(sr);
-          this.emit({ type: "step.end", runId: record.id, step: sr });
-        };
-        if (skip) {
-          finish({ index: record.steps.length, stepId: step.id, op: step.op, status: "skipped", durationMs: 0, attempts: 0, output: { reason: skip } });
-          continue;
-        }
-        if (!step.forEach) {
-          const sr = await this.runStep(w, step, record.steps.length, op, scope, signal, redact);
-          finish(sr);
-          if (sr.status === "failed" && step.onError === "fail") {
-            failure = sr.error!;
-            break;
-          }
-          continue;
-        }
-        // One record per iteration (id "step[i]"); the step's own id then holds {count, results} for later steps.
-        const items = loopItems(step.forEach, scope);
-        const results: unknown[] = [];
-        for (const [i, item] of items.entries()) {
-          if (signal.aborted) throw abortReason(signal);
-          const sr = await this.runStep(w, { ...step, id: `${step.id}[${i}]` }, record.steps.length, op, { ...scope, loop: { item, index: i } }, signal, redact);
-          finish(sr);
-          results.push(sr.status === "succeeded" ? sr.output : { error: sr.error?.message });
-          if (sr.status === "failed" && step.onError === "fail") {
-            failure = sr.error!;
-            break;
-          }
-        }
-        scope.steps[step.id] = { count: items.length, results };
-        if (failure) break;
-      }
+      // Fail before any side effect if the workflow (or a subflow it names) cannot run here at all.
+      this.preflight(w, ops, new Set([w.name]), 0);
+      const ctx: SeqCtx = { ops, record, signal, redact, prefix: "", depth: 0, chain: [w.name] };
+      failure = await this.runSequence(w, w.steps, scope, ctx);
 
       if (!failure) {
         const out: Record<string, unknown> = {};
@@ -180,6 +160,109 @@ export class Engine {
     this.store.finishRun(record);
     this.emit({ type: "run.end", runId: record.id, run: record });
     return record;
+  }
+
+  /** Refuses, before anything runs, a workflow whose ops or (literally named) subflows cannot run here. */
+  private preflight(w: Workflow, ops: Map<string, { op: OpDef; adapter: Adapter }>, chain: Set<string>, depth: number): void {
+    for (const s of w.steps) {
+      if (s.op === CALL_OP) {
+        const name = (s.args as { workflow?: unknown }).workflow;
+        if (typeof name !== "string" || name.includes("${")) continue; // named at run time; checked then
+        if (chain.has(name)) throw new MotiveError("invalid_workflow", `step ${s.id}: workflow ${name} would call itself (${[...chain, name].join(" > ")})`);
+        if (depth + 1 > MAX_CALL_DEPTH) throw new MotiveError("invalid_workflow", `step ${s.id}: subflows nest more than ${MAX_CALL_DEPTH} deep`);
+        const child = this.store.getWorkflow(name);
+        if (!child) throw new MotiveError("not_found", `step ${s.id}: no stored workflow named ${name}`);
+        requireScopeSubset(w, child, s.id);
+        this.preflight(child, ops, new Set([...chain, name]), depth + 1);
+        continue;
+      }
+      const found = ops.get(s.op);
+      if (!found) throw new MotiveError("unknown_op", `step ${s.id}: unknown operation ${s.op}`);
+      const cap = found.adapter.capability();
+      if (!cap.available) throw new MotiveError("unsupported", `step ${s.id}: ${s.op} is unavailable: ${cap.reason}`);
+    }
+  }
+
+  /** Runs steps in order; returns the failure that stopped them, if any. Used for the workflow and for each subflow. */
+  private async runSequence(w: Workflow, steps: Step[], scope: Scope, ctx: SeqCtx): Promise<ErrorInfo | undefined> {
+    const { record, signal } = ctx;
+    const finish = (sr: StepRecord) => {
+      sr.index = record.steps.length;
+      sr.stepId = ctx.prefix + sr.stepId;
+      this.store.addStep(record.id, sr);
+      record.steps.push(sr);
+      this.emit({ type: "step.end", runId: record.id, step: sr });
+    };
+    const one = (st: Step, sc: Scope): Promise<StepRecord> =>
+      st.op === CALL_OP ? this.runCall(w, st, sc, ctx) : this.runStep(w, st, 0, ctx.ops.get(st.op)!.op, sc, signal, ctx.redact);
+
+    for (const step of steps) {
+      if (signal.aborted) throw abortReason(signal);
+      this.emit({ type: "step.start", runId: record.id, step: { stepId: ctx.prefix + step.id, op: step.op } });
+      const skip = step.when?.length ? whenSkipReason(step.when, scope) : undefined;
+      if (skip) {
+        finish({ index: 0, stepId: step.id, op: step.op, status: "skipped", durationMs: 0, attempts: 0, output: { reason: skip } });
+        continue;
+      }
+      if (!step.forEach) {
+        const sr = await one(step, scope);
+        finish(sr);
+        if (sr.status === "failed" && step.onError === "fail") return sr.error!;
+        continue;
+      }
+      // One record per iteration (id "step[i]"); the step's own id then holds {count, results} for later steps.
+      const items = loopItems(step.forEach, scope);
+      const results: unknown[] = [];
+      let failure: ErrorInfo | undefined;
+      for (const [i, item] of items.entries()) {
+        if (signal.aborted) throw abortReason(signal);
+        const sr = await one({ ...step, id: `${step.id}[${i}]` }, { ...scope, loop: { item, index: i } });
+        finish(sr);
+        results.push(sr.status === "succeeded" ? sr.output : { error: sr.error?.message });
+        if (sr.status === "failed" && step.onError === "fail") {
+          failure = sr.error!;
+          break;
+        }
+      }
+      scope.steps[step.id] = { count: items.length, results };
+      if (failure) return failure;
+    }
+    return undefined;
+  }
+
+  /**
+   * flow.call: runs a stored workflow inline with its own inputs and steps (records are named "call/step"). It shares the
+   * run cancellation, deadline, adapters and redaction. A subflow may only touch what its caller may touch, and secret
+   * inputs must be handed over explicitly (a subflow never reads secrets from the environment on its own).
+   */
+  private async runCall(w: Workflow, step: Step, scope: Scope, ctx: SeqCtx): Promise<StepRecord> {
+    const t0 = performance.now();
+    const base = { index: 0, stepId: step.id, op: step.op };
+    try {
+      const parsed = CallArgs.safeParse(interpolate(step.args, scope));
+      if (!parsed.success) throw new MotiveError("invalid_args", `step ${step.id}: ${parsed.error.issues[0]?.path.join(".") || "args"}: ${parsed.error.issues[0]?.message}`);
+      const { workflow: name, inputs: given } = parsed.data;
+      if (ctx.depth >= MAX_CALL_DEPTH) throw new MotiveError("invalid_args", `step ${step.id}: subflows nest more than ${MAX_CALL_DEPTH} deep`);
+      if (ctx.chain.includes(name)) throw new MotiveError("invalid_args", `step ${step.id}: workflow ${name} would call itself`);
+      const child = this.store.getWorkflow(name);
+      if (!child) throw new MotiveError("not_found", `step ${step.id}: no stored workflow named ${name}`);
+      requireScopeSubset(w, child, step.id);
+      for (const [k, def] of Object.entries(child.inputs)) {
+        if (def.secret && !(k in given)) throw new MotiveError("invalid_args", `step ${step.id}: secret input ${k} of ${name} must be passed explicitly`);
+      }
+      const { inputs } = resolveInputs(child, given);
+      const childScope: Scope = { inputs, steps: {} };
+      const failure = await this.runSequence(child, child.steps, childScope, { ...ctx, prefix: `${ctx.prefix}${step.id}/`, depth: ctx.depth + 1, chain: [...ctx.chain, name] });
+      if (failure) throw new MotiveError(failure.code, `subflow ${name}: ${failure.message}`, { retryable: failure.retryable });
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(child.outputs)) out[k] = interpolate(v, childScope);
+      scope.steps[step.id] = out;
+      return { ...base, status: "succeeded", durationMs: Math.round(performance.now() - t0), attempts: 1, output: ctx.redact.value(out) };
+    } catch (e) {
+      const info = toErrorInfo(ctx.signal.aborted ? abortReason(ctx.signal) : e);
+      scope.steps[step.id] = { error: info.message };
+      return { ...base, status: "failed", durationMs: Math.round(performance.now() - t0), attempts: 1, error: ctx.redact.value(info) };
+    }
   }
 
   private async runStep(w: Workflow, step: Step, index: number, op: OpDef, scope: Scope, signal: AbortSignal, redact: Redactor): Promise<StepRecord> {
