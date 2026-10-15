@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beacon Motive</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Beacon Motive</div>
+    <div id="engine" class="engine" role="status"></div>
+    <button id="stop" class="stop" type="button" title="Cancel every active run now">Stop all runs</button>
+  </header>
+  <nav class="side" aria-label="Sections">
+    <button class="nav" data-view="workflows" type="button">Workflows</button>
+    <button class="nav" data-view="runs" type="button">Run history</button>
+    <button class="nav" data-view="audit" type="button">Audit log</button>
+    <p class="note">Teach Mode, the inspector and permissions are not in the app yet. Use the <code>motive</code> CLI.</p>
+  </nav>
+  <main id="main" tabindex="-1"></main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -51,9 +51,13 @@ macOS (AXUIElement; needs a Mac), Linux (AT-SPI; X11 first, Wayland via portals)
 
 Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervised recovery proposals. The core must keep working with none of these installed.
 
-## Milestone 5 — Integration and polish: not started
+## Milestone 5 — Integration and polish: started (desktop shell only)
 
-Desktop app (Tauri 2 against the local API), installer and prebuilt helper, scheduling, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
+| Item | State | Evidence / limit |
+| --- | --- | --- |
+| Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. No Teach Mode, inspector, permissions or editing screens; needs the repo checkout and `node`; unsigned, no installer |
+
+Not started: installer and prebuilt helper, scheduling, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
 
 ## Next highest-value work
 

@@ -4,3 +4,4 @@ target/
 *.log
 .env
 examples/out/
+apps/desktop/src-tauri/gen/

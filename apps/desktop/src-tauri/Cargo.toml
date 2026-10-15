@@ -1,0 +1,21 @@
+[package]
+name = "beacon-motive-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Desktop shell for Beacon Motive"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Plain blocking HTTP to the loopback API. The token never reaches the web view.
+ureq = { version = "2", default-features = false, features = ["json"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
