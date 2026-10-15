@@ -166,6 +166,7 @@ async function workflowDetail(into, name) {
       form,
       h("h2", {}, `Steps (${w.steps.length})`),
       h("ol", { class: "steps" }, w.steps.map((s) => h("li", { class: "plain" }, s.id, " ", h("span", { class: "mono" }, s.op), " ", s.when ? h("span", { class: "chip" }, "conditional") : null, s.forEach ? h("span", { class: "chip" }, "loop") : null))),
+      h("div", { class: "row" }, h("button", { class: "ghost", type: "button", onclick: () => editView(w.name) }, "Edit workflow"), h("button", { class: "ghost", type: "button", onclick: () => deleteWorkflow(w.name) }, "Delete workflow")),
     ),
   );
   form.append(h("span", {}), h("div", { class: "row tight" }, runBtn));
@@ -343,6 +344,88 @@ async function schedulesView() {
     workflows.length ? h("div", { class: "card" }, form) : h("p", { class: "empty" }, "Save a workflow first."),
     h("h2", {}, "Active schedules"),
     schedules.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Workflow"), h("th", {}, "Repeats"), h("th", {}, "State"), h("th", {}, "Last firing"), h("th", {}, ""))), h("tbody", {}, rows)) : h("p", { class: "empty" }, "None yet."));
+}
+
+// ---- Workflow editing --------------------------------------------------------------------------------------
+// Edits a local copy; nothing changes until Save, and the engine validates the whole workflow on save.
+
+async function deleteWorkflow(name) {
+  if (!confirm(`Delete workflow "${name}"? Its run history is kept.`)) return;
+  try {
+    await api("DELETE", `/v1/workflows/${encodeURIComponent(name)}`);
+    state.workflow = null;
+    show("workflows");
+  } catch (e) {
+    alert(String(e));
+  }
+}
+
+async function editView(name) {
+  const original = await api("GET", `/v1/workflows/${encodeURIComponent(name)}`);
+  const draft = structuredClone(original);
+  let dirty = false;
+  state.workflow = name;
+  clear();
+  const status = h("div", { role: "status", class: "sub" });
+  const desc = h("input", { id: "ed-desc", type: "text", value: draft.description ?? "", autocomplete: "off" });
+  desc.addEventListener("input", () => {
+    draft.description = desc.value || undefined;
+    dirty = true;
+  });
+  const list = h("div", {});
+  const move = (i, d) => {
+    const j = i + d;
+    if (j < 0 || j >= draft.steps.length) return;
+    [draft.steps[i], draft.steps[j]] = [draft.steps[j], draft.steps[i]];
+    dirty = true;
+    paint();
+  };
+  const paint = () => {
+    list.replaceChildren(
+      ...draft.steps.map((s, i) => {
+        const text = JSON.stringify(s, null, 2);
+        const area = h("textarea", { class: "mono json", rows: String(Math.min(14, text.split("\n").length + 1)), "aria-label": `Step ${s.id} as JSON`, spellcheck: "false" });
+        area.value = text;
+        const msg = h("span", { class: "sub" });
+        area.addEventListener("change", () => {
+          try {
+            const parsed = JSON.parse(area.value);
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("a step is a JSON object");
+            draft.steps[i] = parsed;
+            dirty = true;
+            msg.textContent = "Applied (checked when you save).";
+          } catch (e) {
+            msg.textContent = `Not applied: ${e.message}`;
+          }
+        });
+        return h("div", { class: "card step-edit" },
+          h("div", { class: "row tight" },
+            h("strong", {}, `${i + 1}. ${s.id}`), " ", h("span", { class: "mono" }, s.op),
+            h("button", { class: "ghost", type: "button", disabled: i === 0, onclick: () => move(i, -1) }, "Up"),
+            h("button", { class: "ghost", type: "button", disabled: i === draft.steps.length - 1, onclick: () => move(i, 1) }, "Down"),
+            h("button", { class: "ghost", type: "button", disabled: draft.steps.length === 1, onclick: () => { draft.steps.splice(i, 1); dirty = true; paint(); } }, "Remove")),
+          area, msg);
+      }),
+    );
+  };
+  paint();
+  const save = h("button", { class: "primary", type: "button", onclick: async () => {
+    try {
+      await api("PUT", `/v1/workflows/${encodeURIComponent(name)}`, draft);
+      dirty = false;
+      show("workflows");
+    } catch (e) {
+      status.textContent = `Not saved: ${e}`;
+      status.className = "banner";
+    }
+  } }, "Save changes");
+  const cancel = h("button", { class: "ghost", type: "button", onclick: () => { if (!dirty || confirm("Discard your edits?")) show("workflows"); } }, "Cancel");
+  fill(main,
+    h("h1", {}, `Edit “${name}”`),
+    h("p", { class: "sub" }, "Change the description, reorder or remove steps, or edit a step as JSON (selectors, values, conditions, retries). Inputs and scopes are not edited here: to widen what a workflow may touch, change its file and save it with the CLI."),
+    h("div", { class: "card" }, h("form", { class: "inputs" }, h("label", { for: "ed-desc" }, "Description"), desc)),
+    h("h2", {}, `Steps (${draft.steps.length})`), list,
+    status, h("div", { class: "row" }, save, cancel));
 }
 
 // ---- Permissions: what the engine can reach, and what each workflow may touch ----------------------------------
