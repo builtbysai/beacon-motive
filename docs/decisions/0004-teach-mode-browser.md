@@ -15,4 +15,4 @@ Status: accepted (Milestone 2, started)
 
 ## Not done
 
-Desktop (Windows) recording, drag/hover/scroll/file upload/iframes/shadow DOM/new tabs, healing proposals when a target stops matching, in-page UI to mark the expected result.
+drag/hover/scroll/file upload/iframes/shadow DOM/new tabs in the browser recorder, in-page UI to mark the expected result. Windows recording is ADR 0007; repair proposals are ADR 0006.
