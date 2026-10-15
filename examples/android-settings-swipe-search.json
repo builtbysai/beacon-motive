@@ -1,0 +1,19 @@
+{
+  "format": "motive.workflow/1",
+  "name": "android-settings-swipe-search",
+  "description": "Needs the on-device helper. Scrolls the Settings list, then types non-ASCII text into the Settings search box (ASCII-only through plain adb). Changes nothing on the phone; the search text is not submitted.",
+  "scopes": { "apps": ["com.android.settings", "com.google.android.settings.intelligence"] },
+  "deadlineMs": 90000,
+  "steps": [
+    { "id": "home", "op": "android.key", "args": { "key": "home" } },
+    { "id": "open", "op": "android.launch", "args": { "package": "com.android.settings", "fresh": true }, "timeoutMs": 15000 },
+    { "id": "scroll", "op": "android.swipe", "args": { "direction": "up" } },
+    { "id": "scrollBack", "op": "android.swipe", "args": { "direction": "down" } },
+    { "id": "search", "op": "android.click", "args": { "target": { "resourceId": "search_bar_title" } }, "timeoutMs": 15000 },
+    { "id": "type", "op": "android.setText", "args": { "target": { "className": "android.widget.EditText" }, "value": "Zoë café 日本" }, "timeoutMs": 15000 },
+    { "id": "check", "op": "android.read", "args": { "target": { "className": "android.widget.EditText" } }, "timeoutMs": 15000, "post": [{ "equals": { "value": "${out.text}", "to": "Zoë café 日本" } }] },
+    { "id": "clear", "op": "android.setText", "args": { "target": { "className": "android.widget.EditText" }, "value": "" }, "timeoutMs": 15000 },
+    { "id": "leave", "op": "android.key", "args": { "key": "home" } }
+  ],
+  "outputs": { "typed": "${steps.check.text}" }
+}

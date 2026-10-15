@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { MotiveError } from "../errors.ts";
+import { HelperClient, helperInstalled } from "./android-helper.ts";
 import type { Adapter, OpContext, OpDef } from "./types.ts";
 
 // Android through adb and UI Automator. Everything a workflow sees is limited to the packages it declared in
@@ -20,6 +21,8 @@ export interface UiNode {
   enabled: boolean;
   password: boolean;
   checked: boolean;
+  /** Only reported by the on-device helper. */
+  editable?: boolean;
   bounds: { left: number; top: number; right: number; bottom: number };
 }
 
@@ -113,6 +116,14 @@ function findDevice(adb: string): Device {
   return value;
 }
 
+/** The adb binary and the one authorised device, or why there is none. */
+export function connectedDevice(): { adb?: string; serial?: string; reason?: string } {
+  const adb = adbPath();
+  if (!adb) return { reason: "adb not found (install Android platform-tools or set MOTIVE_ADB)" };
+  const d = findDevice(adb);
+  return { adb, ...(d.serial ? { serial: d.serial } : { reason: d.reason }) };
+}
+
 const KEYS = { back: "4", home: "3", enter: "66", tab: "61" } as const;
 const PKG = z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/);
 
@@ -121,6 +132,7 @@ export function androidAdapter(): Adapter {
   const device = adb ? findDevice(adb) : { reason: "adb not found (install Android platform-tools or set MOTIVE_ADB)" };
   const reason = !adb ? device.reason : device.reason;
   let disposed = false;
+  let helperPromise: Promise<HelperClient | undefined> | undefined;
   const live = new Set<AbortController>();
 
   function run(args: string[], ctx: OpContext, timeoutMs = 20_000): Promise<string> {
@@ -148,10 +160,50 @@ export function androidAdapter(): Adapter {
     return ctx.scopes.apps;
   }
 
+  /** The resident helper when it is installed and starts; otherwise undefined and the slower uiautomator dump is used. */
+  function helperFor(ctx: OpContext): Promise<HelperClient | undefined> {
+    if (process.env.MOTIVE_ANDROID_HELPER === "off" || !adb || !device.serial) return Promise.resolve(undefined);
+    helperPromise ??= (async () => {
+      if (!helperInstalled(adb, device.serial!)) return undefined;
+      const h = new HelperClient(adb, device.serial!);
+      try {
+        await h.start(ctx.signal);
+        if (disposed) {
+          await h.close();
+          return undefined;
+        }
+        return h;
+      } catch {
+        return undefined;
+      }
+    })();
+    return helperPromise;
+  }
+
+  async function tap(x: number, y: number, ctx: OpContext): Promise<void> {
+    const h = await helperFor(ctx);
+    if (h) await h.call("tap", { x, y, packages: packages(ctx) }, ctx.signal);
+    else await run(["shell", "input", "tap", String(x), String(y)], ctx);
+  }
+
   async function snapshot(ctx: OpContext): Promise<UiNode[]> {
     const pk = packages(ctx);
+    const h = await helperFor(ctx);
+    if (h) return h.tree(pk, ctx.signal);
     const xml = await run(["exec-out", "uiautomator", "dump", "/dev/tty"], ctx);
     return parseDump(xml, pk);
+  }
+
+  /**
+   * With the resident helper a read is fast enough to catch a screen mid-transition (a button still sliding in), and a
+   * tap at its old position is lost. So the match must sit still across two reads. The slow dump path never needs it.
+   */
+  async function settled(n: UiNode, sel: Selector, ctx: OpContext): Promise<boolean> {
+    if (!(await helperFor(ctx))) return true;
+    await new Promise((r) => setTimeout(r, 120));
+    const again = (await snapshot(ctx)).filter((m) => matches(m, sel));
+    const next = again.length === 1 ? again[0]! : again.filter((m) => m.clickable)[0];
+    return Boolean(next) && next!.bounds.left === n.bounds.left && next!.bounds.top === n.bounds.top && next!.bounds.right === n.bounds.right && next!.bounds.bottom === n.bounds.bottom;
   }
 
   /** Re-reads the screen until exactly one node matches, the budget ends, or the selector turns out ambiguous. */
@@ -164,11 +216,16 @@ export function androidAdapter(): Adapter {
       if (hits.length > 1) {
         // Two nodes can describe one control (a clickable row and its label); prefer a single clickable one.
         const clickable = hits.filter((n) => n.clickable);
-        if (clickable.length === 1) return needEnabled && !clickable[0]!.enabled ? Promise.reject(new MotiveError("not_actionable", "control is disabled")) : clickable[0]!;
-        throw new MotiveError("ambiguous", `${hits.length} elements match; make the selector more specific`);
+        if (clickable.length !== 1) throw new MotiveError("ambiguous", `${hits.length} elements match; make the selector more specific`);
+        if (needEnabled && !clickable[0]!.enabled) throw new MotiveError("not_actionable", "control is disabled");
+        if (await settled(clickable[0]!, sel, ctx)) return clickable[0]!;
+        continue;
       }
       if (hits.length === 1) {
-        if (!needEnabled || hits[0]!.enabled) return hits[0]!;
+        if (!needEnabled || hits[0]!.enabled) {
+          if (await settled(hits[0]!, sel, ctx)) return hits[0]!;
+          continue;
+        }
         last = "control is disabled";
       }
       if (Date.now() >= deadline) throw new MotiveError("timeout", `${last} (waited ${ctx.budgetMs} ms)`, { retryable: true });
@@ -184,8 +241,20 @@ export function androidAdapter(): Adapter {
     args: z.object({ package: PKG, fresh: z.boolean().default(false) }).strict(),
     async run(a: { package: string; fresh: boolean }, ctx) {
       if (!packages(ctx).includes(a.package)) throw new MotiveError("scope_denied", `${a.package} is not in this workflow's scopes.apps`);
-      if (a.fresh) await run(["shell", "am", "force-stop", a.package], ctx);
-      await run(["shell", "monkey", "-p", a.package, "-c", "android.intent.category.LAUNCHER", "1"], ctx);
+      if (a.fresh) {
+        await run(["shell", "am", "force-stop", a.package], ctx);
+        // Start the launcher activity in a cleared task. A plain launch would resume the old task, whose top can be
+        // another app's activity (the Settings search screen belongs to a different package) and never reach the app.
+        const out = await run(["shell", "cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", a.package], ctx);
+        const component = out.trim().split(/\r?\n/).pop()?.trim() ?? "";
+        if (new RegExp(`^${a.package.replace(/\./g, "\\.")}/\\S+$`).test(component)) {
+          await run(["shell", "am", "start", "-n", component, "-f", "0x10008000"], ctx); // NEW_TASK | CLEAR_TASK
+        } else {
+          await run(["shell", "monkey", "-p", a.package, "-c", "android.intent.category.LAUNCHER", "1"], ctx);
+        }
+      } else {
+        await run(["shell", "monkey", "-p", a.package, "-c", "android.intent.category.LAUNCHER", "1"], ctx);
+      }
       const deadline = Date.now() + ctx.budgetMs;
       for (;;) {
         const out = await run(["shell", "dumpsys", "activity", "activities"], ctx);
@@ -213,7 +282,7 @@ export function androidAdapter(): Adapter {
     async run(a: { target: Selector }, ctx) {
       const n = await resolve(a.target, ctx, true);
       const { x, y } = center(n);
-      await run(["shell", "input", "tap", String(x), String(y)], ctx);
+      await tap(x, y, ctx);
       return { clicked: true };
     },
   };
@@ -234,9 +303,15 @@ export function androidAdapter(): Adapter {
     idempotent: true,
     args: z.object({ target: Selector, value: z.string().max(500) }).strict(),
     async run(a: { target: Selector; value: string }, ctx) {
-      if (!/^[\x20-\x7e]*$/.test(a.value)) throw new MotiveError("unsupported", "only printable ASCII can be typed through adb input");
       const n = await resolve(a.target, ctx, true);
       const { x, y } = center(n);
+      const h = await helperFor(ctx);
+      if (h && n.editable) {
+        if (n.password) throw new MotiveError("permission_denied", "password fields are never filled through the helper");
+        await h.call("setText", { x, y, text: a.value, packages: packages(ctx) }, ctx.signal);
+        return { set: true };
+      }
+      if (!/^[\x20-\x7e]*$/.test(a.value)) throw new MotiveError("unsupported", "only printable ASCII can be typed through adb input (the on-device helper is needed for other text)");
       await run(["shell", "input", "tap", String(x), String(y)], ctx);
       await run(["shell", "input", "keycombination", "113", "29"], ctx); // select all
       await run(["shell", "input", "keyevent", "67"], ctx); // delete
@@ -251,7 +326,9 @@ export function androidAdapter(): Adapter {
     args: z.object({ key: z.enum(["back", "home", "enter", "tab"]) }).strict(),
     async run(a: { key: keyof typeof KEYS }, ctx) {
       packages(ctx); // a workflow with no Android scope cannot press keys either
-      await run(["shell", "input", "keyevent", KEYS[a.key]], ctx);
+      const h = await helperFor(ctx);
+      if (h) await h.call("key", { key: a.key, packages: packages(ctx) }, ctx.signal);
+      else await run(["shell", "input", "keyevent", KEYS[a.key]], ctx);
       return { pressed: a.key };
     },
   };
@@ -266,7 +343,45 @@ export function androidAdapter(): Adapter {
     },
   };
 
-  const ops = [launch, wait, click, read, setText, key, tree];
+  /** The allowed app's extent on screen: the union of its visible nodes. */
+  async function screenBox(ctx: OpContext): Promise<UiNode["bounds"]> {
+    const deadline = Date.now() + ctx.budgetMs;
+    let nodes = await snapshot(ctx);
+    while (!nodes.length) {
+      if (ctx.signal.aborted) throw new MotiveError("cancelled", "cancelled");
+      if (Date.now() >= deadline) throw new MotiveError("timeout", `nothing of the allowed app appeared on screen (waited ${ctx.budgetMs} ms)`, { retryable: true });
+      await new Promise((r) => setTimeout(r, 100));
+      nodes = await snapshot(ctx);
+    }
+    return {
+      left: Math.min(...nodes.map((n) => n.bounds.left)),
+      top: Math.min(...nodes.map((n) => n.bounds.top)),
+      right: Math.max(...nodes.map((n) => n.bounds.right)),
+      bottom: Math.max(...nodes.map((n) => n.bounds.bottom)),
+    };
+  }
+
+  const swipe: OpDef = {
+    name: "android.swipe",
+    idempotent: false,
+    // Swipes inside `target` (or across the allowed app's visible area). `direction` is where the content moves.
+    args: z.object({ direction: z.enum(["up", "down", "left", "right"]), target: Selector.optional() }).strict(),
+    async run(a: { direction: "up" | "down" | "left" | "right"; target?: Selector }, ctx) {
+      const box = a.target ? (await resolve(a.target, ctx, false)).bounds : await screenBox(ctx);
+      const cx = Math.round((box.left + box.right) / 2);
+      const cy = Math.round((box.top + box.bottom) / 2);
+      const dx = Math.round((box.right - box.left) * 0.3);
+      const dy = Math.round((box.bottom - box.top) * 0.3);
+      const [x1, y1, x2, y2] =
+        a.direction === "up" ? [cx, cy + dy, cx, cy - dy] : a.direction === "down" ? [cx, cy - dy, cx, cy + dy] : a.direction === "left" ? [cx + dx, cy, cx - dx, cy] : [cx - dx, cy, cx + dx, cy];
+      const h = await helperFor(ctx);
+      if (h) await h.call("swipe", { x1, y1, x2, y2, ms: 300, packages: packages(ctx) }, ctx.signal);
+      else await run(["shell", "input", "swipe", String(x1), String(y1), String(x2), String(y2), "300"], ctx);
+      return { swiped: a.direction };
+    },
+  };
+
+  const ops = [launch, wait, click, read, setText, key, tree, swipe];
   return {
     id: "android",
     ops,
@@ -274,6 +389,7 @@ export function androidAdapter(): Adapter {
     async dispose() {
       disposed = true;
       for (const c of live) c.abort();
+      await (await helperPromise?.catch(() => undefined))?.close();
     },
   };
 }

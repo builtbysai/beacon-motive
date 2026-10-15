@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No activity, service, receiver or permission: the helper only runs while someone starts it with
+         `adb shell am instrument`, and stops when that command ends. It cannot start itself. -->
+    <application
+        android:allowBackup="false"
+        android:label="Beacon Motive helper" />
+
+    <instrumentation
+        android:name=".HelperInstrumentation"
+        android:targetPackage="dev.beacon.motive.helper"
+        android:label="Beacon Motive helper" />
+</manifest>

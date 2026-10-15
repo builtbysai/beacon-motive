@@ -19,3 +19,9 @@ Status: accepted (Milestone 3 groundwork; validated on one phone)
 - The screen can change between the dump and the tap (about 2 s on this device). Do not point destructive workflows at a phone with this adapter.
 - Secure windows (FLAG_SECURE), custom-drawn views (games, some Flutter/Compose content without semantics) are invisible to the dump.
 - Only validated on one device: Pixel 7a, Android 17.
+
+## Update
+
+The resident helper described under Limits now exists as an optional component: see ADR 0009.
+
+`android.launch` with `fresh: true` now starts the launcher activity in a cleared task (`am start -f NEW_TASK|CLEAR_TASK`) after the force-stop, because resuming the old task could leave another package's activity (the Settings search screen) on top and the launch would time out. A cleared task also closes any other app's screens in that task.

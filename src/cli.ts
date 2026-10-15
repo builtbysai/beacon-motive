@@ -13,7 +13,10 @@ import { induce } from "./record/induce.ts";
 import { compileWindow, recordWindow } from "./record/windows.ts";
 import { applyProposal, proposalsFor } from "./heal.ts";
 import { recordSession } from "./record/recorder.ts";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { connectedDevice } from "./adapters/android.ts";
+import { HELPER_PACKAGE, helperInstalled } from "./adapters/android-helper.ts";
 
 const USAGE = `motive <command>
 
@@ -34,6 +37,8 @@ const USAGE = `motive <command>
   inspect windows                    top-level windows (Windows)
   inspect tree --window <name> [--depth n]
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
+  android-helper [status|install|remove]
+                                     the optional on-device helper (about 10x faster than uiautomator dump)
   audit                              recent audit entries
 
 Secret inputs are never taken on the command line: set MOTIVE_SECRET_<NAME>.`;
@@ -227,6 +232,24 @@ async function main(): Promise<number> {
       case "history": {
         if (arg) console.log(JSON.stringify(store.getRun(arg), null, 2));
         else for (const r of store.listRuns(20)) console.log(`${r.id}  ${r.status.padEnd(9)} ${String(r.durationMs ?? "").padStart(6)} ms  ${r.workflow}  ${r.startedAt}`);
+        return 0;
+      }
+      case "android-helper": {
+        const d = connectedDevice();
+        if (!d.adb || !d.serial) throw new Error(d.reason ?? "no Android device");
+        const adb = d.adb;
+        const serial = d.serial;
+        const sub = arg ?? "status";
+        if (sub === "install") {
+          const apk = positionals[2] ?? new URL("../apps/android-helper/app/build/outputs/apk/debug/app-debug.apk", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+          if (!existsSync(apk)) throw new Error(`no APK at ${apk}; build it first (see apps/android-helper/README.md)`);
+          console.log(execFileSync(adb, ["-s", serial, "install", "-r", apk], { encoding: "utf8" }).trim());
+        } else if (sub === "remove") {
+          console.log(execFileSync(adb, ["-s", serial, "uninstall", HELPER_PACKAGE], { encoding: "utf8" }).trim());
+        } else if (sub !== "status") {
+          throw new Error("usage: motive android-helper [status|install [apk]|remove]");
+        }
+        console.log(`helper ${helperInstalled(adb, serial) ? "installed" : "not installed"} on ${serial}`);
         return 0;
       }
       case "audit":

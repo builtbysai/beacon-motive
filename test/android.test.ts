@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { androidAdapter, matches, parseDump } from "../src/adapters/android.ts";
+import { toNodes } from "../src/adapters/android-helper.ts";
 import { Engine } from "../src/engine.ts";
 import { Store } from "../src/store.ts";
 import { parseWorkflow } from "../src/workflow.ts";
@@ -16,6 +17,14 @@ test("android dump: nodes outside the allowed packages are dropped before anythi
   assert.equal(nodes[0]!.text, "Apps & more");
   assert.equal(JSON.stringify(nodes).includes("Secret"), false);
   assert.equal(parseDump(xml, []).length, 0);
+});
+
+test("android helper: nodes of other packages are dropped on the computer too, even if the helper sent them", () => {
+  const raw = (pkg: string, text: string) => ({ text, resourceId: "", className: "x", package: pkg, contentDesc: "", clickable: false, enabled: true, password: false, checked: false, editable: false, bounds: [0, 0, 10, 10] as [number, number, number, number] });
+  const nodes = toNodes([raw("com.android.systemui", "Secret notification"), raw("com.android.settings", "Apps")], ["com.android.settings"]);
+  assert.deepEqual(nodes.map((n) => n.text), ["Apps"]);
+  assert.deepEqual(nodes[0]!.bounds, { left: 0, top: 0, right: 10, bottom: 10 });
+  assert.equal(toNodes([raw("a.b", "x")], []).length, 0);
 });
 
 test("android selectors: short resource ids, case-insensitive contains, zero-area nodes never match", () => {
@@ -41,4 +50,12 @@ test("real Android phone: Settings tour verifies and changes nothing", { skip: !
   const r = await new Engine(new Store(":memory:")).start(w).done;
   assert.equal(r.status, "succeeded", JSON.stringify(r.error));
   assert.equal(r.outputs?.reached, "Default apps");
+});
+
+const helperOptIn = optIn && process.env.MOTIVE_TEST_ANDROID_HELPER === "1";
+test("real Android phone with the helper: scroll and type non-ASCII text", { skip: !helperOptIn && "set MOTIVE_TEST_ANDROID=1 and MOTIVE_TEST_ANDROID_HELPER=1 with the helper installed" }, async () => {
+  const w = parseWorkflow(JSON.parse(readFileSync(new URL("../examples/android-settings-swipe-search.json", import.meta.url), "utf8")));
+  const r = await new Engine(new Store(":memory:")).start(w).done;
+  assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+  assert.equal(r.outputs?.typed, "Zoë café 日本");
 });

@@ -42,7 +42,8 @@ Decision still pending on importing OpenAdapt recordings through an isolated Pyt
 
 | Item | State | Evidence / limit |
 | --- | --- | --- |
-| Android via adb + UI Automator (ADR 0005) | Partial | Pixel 7a, Android 17: Settings tour passes (2 consecutive real runs, ~10.5 s); package-scoped dump filtering, selectors and scope refusal unit-tested. Slow (2.3 s per observation); no resident helper, scrolling/swipe, multi-touch, or non-ASCII text |
+| Android via adb + UI Automator (ADR 0005) | Partial | Pixel 7a, Android 17: Settings tour passes; package-scoped filtering, selectors and scope refusal unit-tested. Without the helper: 2.3 s per observation (tour 10.7 s) |
+| Android resident helper (`apps/android-helper`, ADR 0009) | Partial | Optional instrumentation APK, no permissions, abstract-socket + token. Same tour 4.6 s (6/6 runs); reads 15–35 ms; `android.swipe` and non-ASCII `setText` verified on the phone. Debug-signed only; one device; multi-touch, pinch and secure windows not done; real-phone tests are opt-in |
 | Audio on any platform | Not tested | deliberately excluded for now |
 
 macOS (AXUIElement; needs a Mac), Linux (AT-SPI; X11 first, Wayland via portals). Nothing is claimed for either.
