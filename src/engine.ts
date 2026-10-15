@@ -7,7 +7,7 @@ import { windowsAdapter } from "./adapters/windows.ts";
 import { androidAdapter } from "./adapters/android.ts";
 import { MotiveError, toErrorInfo, type ErrorInfo } from "./errors.ts";
 import type { RunRecord, StepRecord, Store } from "./store.ts";
-import { evaluate, interpolate, type Condition, type Scope, type Step, type Workflow } from "./workflow.ts";
+import { evaluate, interpolate, loopItems, type Condition, type Scope, type Step, type Workflow } from "./workflow.ts";
 
 export type AdapterFactory = () => Adapter;
 export const defaultAdapters: AdapterFactory[] = [coreAdapter, fsAdapter, browserAdapter, windowsAdapter, androidAdapter];
@@ -117,23 +117,44 @@ export class Engine {
         if (!cap.available) throw new MotiveError("unsupported", `step ${s.id}: ${s.op} is unavailable: ${cap.reason}`);
       }
 
-      for (const [index, step] of w.steps.entries()) {
+      for (const step of w.steps) {
         if (signal.aborted) throw abortReason(signal);
         const { op } = ops.get(step.op)!;
         this.emit({ type: "step.start", runId: record.id, step: { stepId: step.id, op: step.op } });
         const skip = step.when?.length ? whenSkipReason(step.when, scope) : undefined;
-        const sr = skip
-          ? ({ index, stepId: step.id, op: step.op, status: "skipped", durationMs: 0, attempts: 0, output: { reason: skip } } satisfies StepRecord)
-          : await this.runStep(w, step, index, op, scope, signal, redact);
-        this.store.addStep(record.id, sr);
-        record.steps.push(sr);
-        this.emit({ type: "step.end", runId: record.id, step: sr });
-        if (sr.status === "failed") {
-          if (step.onError === "fail") {
+        const finish = (sr: StepRecord) => {
+          this.store.addStep(record.id, sr);
+          record.steps.push(sr);
+          this.emit({ type: "step.end", runId: record.id, step: sr });
+        };
+        if (skip) {
+          finish({ index: record.steps.length, stepId: step.id, op: step.op, status: "skipped", durationMs: 0, attempts: 0, output: { reason: skip } });
+          continue;
+        }
+        if (!step.forEach) {
+          const sr = await this.runStep(w, step, record.steps.length, op, scope, signal, redact);
+          finish(sr);
+          if (sr.status === "failed" && step.onError === "fail") {
+            failure = sr.error!;
+            break;
+          }
+          continue;
+        }
+        // One record per iteration (id "step[i]"); the step's own id then holds {count, results} for later steps.
+        const items = loopItems(step.forEach, scope);
+        const results: unknown[] = [];
+        for (const [i, item] of items.entries()) {
+          if (signal.aborted) throw abortReason(signal);
+          const sr = await this.runStep(w, { ...step, id: `${step.id}[${i}]` }, record.steps.length, op, { ...scope, loop: { item, index: i } }, signal, redact);
+          finish(sr);
+          results.push(sr.status === "succeeded" ? sr.output : { error: sr.error?.message });
+          if (sr.status === "failed" && step.onError === "fail") {
             failure = sr.error!;
             break;
           }
         }
+        scope.steps[step.id] = { count: items.length, results };
+        if (failure) break;
       }
 
       if (!failure) {

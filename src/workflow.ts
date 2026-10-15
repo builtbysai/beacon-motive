@@ -30,6 +30,12 @@ const Step = z
     // Step runs only when every condition holds; otherwise it is recorded as skipped. Evaluated against inputs and
     // earlier steps. A later reference to a skipped step's output is an unresolved_reference error, not an empty value.
     when: z.array(Condition).optional(),
+    // Runs the step once per item, with ${loop.item} and ${loop.index} available. `items` is an array or a reference
+    // that resolves to an array, or to a string split on `separator`. At most MAX_LOOP_ITEMS; no nesting.
+    forEach: z
+      .object({ items: z.unknown(), separator: z.string().min(1).max(8).optional() })
+      .strict()
+      .optional(),
     pre: z.array(Condition).optional(),
     // Evaluated against the step's own output as ${out.<field>}. For idempotent ops (reads, waits) a failing
     // postcondition re-runs the step until the timeout instead of failing at once.
@@ -88,6 +94,21 @@ export interface Scope {
   inputs: Record<string, unknown>;
   steps: Record<string, Record<string, unknown>>;
   out?: Record<string, unknown>;
+  loop?: { item: unknown; index: number };
+}
+
+export const MAX_LOOP_ITEMS = 100;
+
+/** Resolves a step's forEach items to a bounded list. */
+export function loopItems(spec: { items?: unknown; separator?: string }, scope: Scope): unknown[] {
+  let items = interpolate(spec.items, scope);
+  if (typeof items === "string") {
+    if (!spec.separator) throw new MotiveError("invalid_args", "forEach.items resolved to a string; set forEach.separator");
+    items = items.split(spec.separator).map((s) => s.trim()).filter((s) => s !== "");
+  }
+  if (!Array.isArray(items)) throw new MotiveError("invalid_args", "forEach.items must be an array or a separated string");
+  if (items.length > MAX_LOOP_ITEMS) throw new MotiveError("invalid_args", `forEach has ${items.length} items (limit ${MAX_LOOP_ITEMS})`);
+  return items;
 }
 
 const REF = /\$\{([^}]+)\}/g;

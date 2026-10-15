@@ -102,6 +102,26 @@ test("when: a false guard skips the step, a true guard runs it, and a skipped st
   assert.equal(bad.steps.at(-1)?.error?.code, "unresolved_reference");
 });
 
+test("forEach: runs once per item with loop.item/index, aggregates results, stops on first failure", async () => {
+  const p = probe();
+  const e = engineWith(p.factory);
+  const inputs = { names: { type: "string" } };
+  const loop = { id: "each", op: "probe.record", args: { tag: "${loop.index}:${loop.item}" }, forEach: { items: "${inputs.names}", separator: "," } };
+  const r = await e.start(wf([loop, { id: "after", op: "probe.record", args: { tag: "n=${steps.each.count}" } }], { inputs }), { names: "x, y,z" }).done;
+  assert.equal(r.status, "succeeded");
+  assert.deepEqual(p.state.ran, ["0:x", "1:y", "2:z", "n=3"]);
+  assert.deepEqual(r.steps.map((s) => s.stepId), ["each[0]", "each[1]", "each[2]", "after"]);
+
+  const p2 = probe();
+  const lit = { id: "f", op: "probe.flaky", args: { failTimes: 1 }, forEach: { items: [1, 2, 3] } };
+  const bad = await engineWith(p2.factory).start(wf([lit])).done;
+  assert.equal(bad.status, "failed");
+  assert.equal(bad.steps.length, 1, "first failing iteration stops the loop");
+
+  const big = await engineWith(probe().factory).start(wf([{ id: "g", op: "probe.record", args: { tag: "t" }, forEach: { items: Array.from({ length: 101 }, (_, i) => i) } }])).done;
+  assert.equal(big.error?.code, "invalid_args");
+});
+
 test("bounded retry recovers a retryable failure and records attempts", async () => {
   const p = probe();
   const e = engineWith(p.factory);
