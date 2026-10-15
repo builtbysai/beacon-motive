@@ -11,7 +11,7 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 
 | Item | State | Evidence / limit |
 | --- | --- | --- |
-| Workflow format v1 + validation | Done | `test/engine.test.ts`; no branches/loops/subflows yet (reserved) |
+| Workflow format v1 + validation | Done | `test/engine.test.ts`; step-level `when` guards (conditional skip) added, tested with a controllable adapter only; no loops/subflows/schedule yet (reserved) |
 | Engine: cancel, deadline, retry, postcondition polling, concurrency, emergency stop | Done | unit tests with a controllable adapter, plus real runs |
 | Browser adapter (Playwright, installed Chrome) | Partial | open/fill/click/read/wait validated on a local fixture page in Chrome; Edge, Firefox, multiple tabs/frames, downloads, file upload not done |
 | Windows adapter | Partial | Validated on Calculator (UWP) and a purpose-built native WinForms app (`npm run build:fixture`): launch, press/toggle/select/expand, setValue, keyboard typing (`win.type`), list select, combo via value, menus, read text/toggle state, close. Shells/interpreters can never be launched. Password boxes are never read. Not done: trees/grids, element change events, drag, elevated windows (reported unreachable by design), DPI/multi-monitor, combos that only open via a popup window, WPF/Qt/Electron/Java apps (untested). Resolved windows/controls are cached (a window renamed in place would still match until it goes away) |

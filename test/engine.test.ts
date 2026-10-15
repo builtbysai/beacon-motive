@@ -83,6 +83,25 @@ test("unknown op and unavailable adapters fail before any step runs", async () =
   assert.deepEqual(p.state.ran, [], "no step may run when the workflow cannot run at all");
 });
 
+test("when: a false guard skips the step, a true guard runs it, and a skipped step's output is not readable", async () => {
+  const p = probe();
+  const e = engineWith(p.factory);
+  const inputs = { mode: { type: "string" } };
+  const steps = [
+    { id: "a", op: "probe.record", args: { tag: "a" }, when: [{ equals: { value: "${inputs.mode}", to: "fast" } }] },
+    { id: "b", op: "probe.record", args: { tag: "b" }, when: [{ equals: { value: "${inputs.mode}", to: "slow" } }] },
+  ];
+  const r = await e.start(wf(steps, { inputs }), { mode: "fast" }).done;
+  assert.equal(r.status, "succeeded");
+  assert.deepEqual(p.state.ran, ["a"]);
+  assert.deepEqual(r.steps.map((s) => s.status), ["succeeded", "skipped"]);
+
+  const p2 = probe();
+  const bad = await engineWith(p2.factory).start(wf([...steps, { id: "c", op: "probe.record", args: { tag: "${steps.b.tag}" } }], { inputs }), { mode: "fast" }).done;
+  assert.equal(bad.status, "failed");
+  assert.equal(bad.steps.at(-1)?.error?.code, "unresolved_reference");
+});
+
 test("bounded retry recovers a retryable failure and records attempts", async () => {
   const p = probe();
   const e = engineWith(p.factory);

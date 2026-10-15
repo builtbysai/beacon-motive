@@ -26,5 +26,6 @@ A workflow is one JSON document, validated on load and on every API write.
 - **Interpolation** uses `${inputs.x}`, `${steps.id.field}`. Resolved lazily; a missing reference is a structured error, not an empty string.
 - **Per step:** `timeoutMs`, `retry {max, backoffMs}` (bounded, default none), `pre`/`post` conditions, `onError: "fail"|"continue"`. Postconditions are mandatory for steps that change state in a way the engine can read back; the linter warns otherwise.
 - **Deadline:** workflow-level `deadlineMs`; cancellation aborts the active step through an `AbortSignal`.
-- **Reserved, not implemented in v1:** `if`, `forEach`, `call` (subflows), `schedule`. The `format` version gates their addition.
+- **Conditional steps (added, backward compatible):** optional `when: [conditions]` on a step. All must hold or the step is recorded as `skipped` (reason in its output) and does not run. Same condition kinds as `pre`/`post`. Referencing a skipped step's output later fails with `unresolved_reference` rather than yielding an empty value. Unlike `pre`, a false `when` is not an error. No `else`: use a second step with the opposite guard.
+- **Reserved, not implemented in v1:** `forEach`, `call` (subflows), `schedule`. The `format` version gates their addition.
 - **Privileged ops** (`core.shell`, `fs.delete`, anything outside the workflow's declared `scopes`) require explicit approval at run time; v1 ships `fs.read`/`fs.write` restricted to declared directories and no shell op.

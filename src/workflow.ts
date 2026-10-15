@@ -27,6 +27,9 @@ const Step = z
       .object({ max: z.number().int().min(1).max(5), backoffMs: z.number().int().min(0).max(30_000).default(250) })
       .strict()
       .optional(),
+    // Step runs only when every condition holds; otherwise it is recorded as skipped. Evaluated against inputs and
+    // earlier steps. A later reference to a skipped step's output is an unresolved_reference error, not an empty value.
+    when: z.array(Condition).optional(),
     pre: z.array(Condition).optional(),
     // Evaluated against the step's own output as ${out.<field>}. For idempotent ops (reads, waits) a failing
     // postcondition re-runs the step until the timeout instead of failing at once.

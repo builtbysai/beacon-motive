@@ -121,7 +121,10 @@ export class Engine {
         if (signal.aborted) throw abortReason(signal);
         const { op } = ops.get(step.op)!;
         this.emit({ type: "step.start", runId: record.id, step: { stepId: step.id, op: step.op } });
-        const sr = await this.runStep(w, step, index, op, scope, signal, redact);
+        const skip = step.when?.length ? whenSkipReason(step.when, scope) : undefined;
+        const sr = skip
+          ? ({ index, stepId: step.id, op: step.op, status: "skipped", durationMs: 0, attempts: 0, output: { reason: skip } } satisfies StepRecord)
+          : await this.runStep(w, step, index, op, scope, signal, redact);
         this.store.addStep(record.id, sr);
         record.steps.push(sr);
         this.emit({ type: "step.end", runId: record.id, step: sr });
@@ -243,6 +246,11 @@ function firstFailure(conds: Condition[], scope: Scope): string | undefined {
     if (!r.ok) return r.why;
   }
   return undefined;
+}
+
+/** Returns why a `when` guard is false, or undefined when the step should run. A broken reference fails the run. */
+function whenSkipReason(conds: Condition[], scope: Scope): string | undefined {
+  return firstFailure(conds, scope);
 }
 
 function abortReason(signal: AbortSignal): MotiveError {

@@ -48,7 +48,7 @@ function loadWorkflow(arg: string, store: Store): Workflow {
 function line(e: RunEvent): string | undefined {
   if (e.type === "step.start" && e.step) return `  … ${"op" in e.step ? e.step.op : ""} ${e.step.stepId}`;
   if (e.type === "step.end" && e.step && "status" in e.step) {
-    const mark = e.step.status === "succeeded" ? "✓" : "✗";
+    const mark = e.step.status === "succeeded" ? "✓" : e.step.status === "skipped" ? "–" : "✗";
     return `  ${mark} ${e.step.stepId} (${e.step.op}) ${e.step.durationMs} ms${e.step.attempts > 1 ? `, ${e.step.attempts} attempts` : ""}${e.step.error ? ` — ${e.step.error.code}: ${e.step.error.message}` : ""}`;
   }
   return undefined;
