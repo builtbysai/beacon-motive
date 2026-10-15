@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { Engine } from "../src/engine.ts";
 import { startServer } from "../src/server.ts";
 import { Store } from "../src/store.ts";
@@ -53,6 +54,66 @@ test("real desktop + file + browser in one workflow", { skip: (!hasWindows || !h
   const r = await e.start(example("mixed-calc-to-web.json"), { a: 9, b: 9 }).done;
   assert.equal(r.status, "succeeded", JSON.stringify(r.error));
   assert.equal(r.outputs?.greeting, "Hello, Display is 18!");
+});
+
+const fixtureBuilt = existsSync(new URL("../target/fixtures/MotiveFixture.exe", import.meta.url));
+const winForms = hasWindows && fixtureBuilt;
+const killFixture = () => {
+  try {
+    execFileSync("taskkill", ["/IM", "MotiveFixture.exe", "/F"], { stdio: "ignore" });
+  } catch {
+    /* not running */
+  }
+};
+
+test("real native form: typing, secret field, checkbox, combo, list and menu", { skip: !winForms && "needs Windows and: npm run build:fixture" }, async () => {
+  killFixture();
+  const e = new Engine(new Store(":memory:"));
+  process.env.MOTIVE_SECRET_SECRET = "native-secret-xyz";
+  try {
+    const r = await e.start(example("windows-form-fixture.json"), { name: "Linus" }).done;
+    assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+    assert.match(String(r.outputs?.result), /^Name=Linus;Loud=True;Size=Large;Color=Green;Secret=17$/);
+    assert.ok(!JSON.stringify(e.store.getRun(r.id)).includes("native-secret-xyz"));
+  } finally {
+    delete process.env.MOTIVE_SECRET_SECRET;
+    killFixture();
+  }
+});
+
+test("native password boxes are never read back", { skip: !winForms && "needs Windows and: npm run build:fixture" }, async () => {
+  killFixture();
+  const e = new Engine(new Store(":memory:"));
+  const w = parseWorkflow({
+    format: "motive.workflow/1",
+    name: "t",
+    scopes: { apps: ["MotiveFixture.exe"] },
+    steps: [
+      { id: "o", op: "win.launch", args: { command: "./target/fixtures/MotiveFixture.exe", window: { name: "Motive Fixture" } } },
+      { id: "t", op: "win.type", args: { window: { name: "Motive Fixture" }, target: { automationId: "pwBox" }, text: "abc" } },
+      { id: "r", op: "win.read", args: { window: { name: "Motive Fixture" }, target: { automationId: "pwBox" } } },
+    ],
+  });
+  try {
+    const r = await e.start(w).done;
+    assert.equal(r.status, "failed");
+    assert.equal(r.error?.code, "permission_denied");
+  } finally {
+    killFixture();
+  }
+});
+
+test("a shell or interpreter can never be launched, even if the workflow lists it", { skip: !hasWindows && "needs the Windows helper" }, async () => {
+  const e = new Engine(new Store(":memory:"));
+  const w = parseWorkflow({
+    format: "motive.workflow/1",
+    name: "t",
+    scopes: { apps: ["powershell.exe"] },
+    steps: [{ id: "o", op: "win.launch", args: { command: "powershell.exe", args: ["-Command", "echo hi"], window: { name: "x" } } }],
+  });
+  const r = await e.start(w).done;
+  assert.equal(r.error?.code, "scope_denied");
+  assert.match(r.error!.message, /shell or interpreter/);
 });
 
 // ---- API security ------------------------------------------------------------------------------------------

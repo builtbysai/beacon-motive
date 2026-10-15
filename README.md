@@ -14,6 +14,9 @@ $env:MOTIVE_SECRET_PASSWORD = "anything"
 npm run motive -- run examples/browser-greet.json
 npm run motive -- run examples/windows-calculator-add.json -i a=4 -i b=6
 npm run motive -- run examples/mixed-calc-to-web.json
+npm run build:fixture      # native test app for the Windows adapter
+$env:MOTIVE_SECRET_SECRET = "anything"
+npm run motive -- run examples/windows-form-fixture.json
 npm run motive -- record ./examples/fixtures/form.html --name my-greet --expect-text "Hello"
 npm test
 ```

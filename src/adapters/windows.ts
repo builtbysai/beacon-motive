@@ -41,7 +41,7 @@ export class WinClient {
       if (!p) return;
       this.pending.delete(r.id);
       if (r.ok) p.resolve(r.result);
-      else p.reject(new MotiveError((r.error?.code as ErrorCode) ?? "adapter_failed", r.error?.message ?? "sidecar error", { retryable: r.error?.code === "not_found" }));
+      else p.reject(new MotiveError((r.error?.code === "denied" ? "permission_denied" : (r.error?.code as ErrorCode)) ?? "adapter_failed", r.error?.message ?? "sidecar error", { retryable: r.error?.code === "not_found" }));
     });
     this.child.on("exit", () => {
       for (const p of this.pending.values()) p.reject(new MotiveError("adapter_failed", "the Windows automation helper exited"));
@@ -78,6 +78,9 @@ const TargetSel = z
   .object({ automationId: z.string().optional(), name: z.string().optional(), nameContains: z.string().optional(), controlType: z.string().optional() })
   .strict()
   .refine((t) => Object.keys(t).length > 0, "target needs a selector");
+
+/** Interpreters and shells can run anything their arguments say, so an app allow-list can never include them. */
+const INTERPRETERS = new Set(["cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe", "wsl.exe", "bash.exe", "sh.exe", "python.exe", "pythonw.exe", "node.exe", "rundll32.exe", "regsvr32.exe", "msiexec.exe"]);
 
 const RETRY_WHILE = new Set<string>(["not_found", "not_actionable"]);
 
@@ -126,6 +129,7 @@ export function windowsAdapter(): Adapter {
       if (!ctx.scopes.apps.map((x) => x.toLowerCase()).includes(base)) {
         throw new MotiveError("scope_denied", `${base} is not in this workflow's scopes.apps`);
       }
+      if (INTERPRETERS.has(base)) throw new MotiveError("scope_denied", `${base} is a shell or interpreter and can never be launched by a workflow`);
       const c = win();
       const child = spawn(a.command, a.args, { detached: true, stdio: "ignore", shell: false });
       child.on("error", () => {});
@@ -187,7 +191,29 @@ export function windowsAdapter(): Adapter {
     async run(a, ctx) {
       const c = win();
       const r = await settle(ctx, () => c.call("element.read", a));
-      return { text: r.text as string, name: r.name as string, enabled: r.enabled as boolean };
+      return { text: r.text as string, name: r.name as string, enabled: r.enabled as boolean, toggle: (r.toggle as string | null) ?? "", selected: (r.selected as boolean | null) ?? false };
+    },
+  };
+
+  const select: OpDef = {
+    name: "win.select",
+    idempotent: true,
+    args: z.object({ window: WindowSel, target: TargetSel, container: TargetSel.optional() }).strict(),
+    async run(a, ctx) {
+      const c = win();
+      await settle(ctx, () => c.call("element.select", a));
+      return { selected: true };
+    },
+  };
+
+  const type: OpDef = {
+    name: "win.type",
+    idempotent: false,
+    args: z.object({ window: WindowSel, target: TargetSel, text: z.string().max(500) }).strict(),
+    async run(a, ctx) {
+      const c = win();
+      const r = await settle(ctx, () => c.call("element.type", a));
+      return { typed: r.typed as number };
     },
   };
 
@@ -223,7 +249,7 @@ export function windowsAdapter(): Adapter {
     },
   };
 
-  const ops = [launch, wait, click, setValue, read, close, tree];
+  const ops = [launch, wait, click, setValue, type, select, read, close, tree];
   return {
     id: "windows",
     ops,

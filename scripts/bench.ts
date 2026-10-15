@@ -10,10 +10,11 @@ const median = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length
 const p95 = (a: number[]) => [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.ceil(a.length * 0.95) - 1)] ?? 0;
 
 process.env.MOTIVE_SECRET_PASSWORD = "bench-password";
+process.env.MOTIVE_SECRET_SECRET = "bench-secret";
 const engine = new Engine(new Store(":memory:"));
 console.log(`node ${process.version} on ${process.platform}; ${runs} runs each; model calls: 0\n`);
 
-for (const file of ["browser-greet.json", "windows-calculator-add.json", "mixed-calc-to-web.json"]) {
+for (const file of ["browser-greet.json", "windows-calculator-add.json", "mixed-calc-to-web.json", "windows-form-fixture.json"]) {
   const w = parseWorkflow(JSON.parse(readFileSync(new URL(`../examples/${file}`, import.meta.url), "utf8")));
   const cap = (await engine.capabilities()).filter((c) => !c.available && w.steps.some((s) => c.ops.includes(s.op)));
   if (cap.length) {

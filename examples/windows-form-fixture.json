@@ -1,0 +1,37 @@
+{
+  "format": "motive.workflow/1",
+  "name": "windows-form-fixture",
+  "description": "Drives a native Windows Forms app: typing, a secret field, a checkbox, a combo box, a list and a menu. Build the app first: npm run build:fixture",
+  "inputs": {
+    "name": { "type": "string", "default": "Grace" },
+    "secret": { "type": "string", "secret": true }
+  },
+  "scopes": { "apps": ["MotiveFixture.exe"] },
+  "steps": [
+    { "id": "open", "op": "win.launch", "args": { "command": "./target/fixtures/MotiveFixture.exe", "window": { "name": "Motive Fixture" } }, "timeoutMs": 15000 },
+    { "id": "name", "op": "win.type", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "nameBox" }, "text": "${inputs.name}" } },
+    { "id": "secret", "op": "win.type", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "pwBox" }, "text": "${inputs.secret}" } },
+    { "id": "shout", "op": "win.click", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "loudBox" } } },
+    { "id": "shoutState", "op": "win.read", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "loudBox" } }, "post": [{ "equals": { "value": "${out.toggle}", "to": "on" } }] },
+    { "id": "size", "op": "win.setValue", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "sizeBox" }, "value": "Large" } },
+    { "id": "sizeCheck", "op": "win.read", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "sizeBox" } }, "post": [{ "equals": { "value": "${out.text}", "to": "Large" } }] },
+    { "id": "color", "op": "win.select", "args": { "window": { "name": "Motive Fixture" }, "target": { "name": "Green", "controlType": "ListItem" } } },
+    { "id": "go", "op": "win.click", "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "goButton" } } },
+    {
+      "id": "result",
+      "op": "win.read",
+      "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "resultLabel" } },
+      "post": [{ "contains": { "value": "${out.text}", "text": "Name=${inputs.name};Loud=True;Size=Large;Color=Green;Secret=" } }]
+    },
+    { "id": "menu", "op": "win.click", "args": { "window": { "name": "Motive Fixture" }, "target": { "name": "Actions", "controlType": "MenuItem" } } },
+    { "id": "clear", "op": "win.click", "args": { "window": { "name": "Motive Fixture" }, "target": { "name": "Clear", "controlType": "MenuItem" } } },
+    {
+      "id": "cleared",
+      "op": "win.read",
+      "args": { "window": { "name": "Motive Fixture" }, "target": { "automationId": "resultLabel" } },
+      "post": [{ "equals": { "value": "${out.text}", "to": "Cleared" } }]
+    },
+    { "id": "close", "op": "win.close", "args": { "window": { "name": "Motive Fixture" } } }
+  ],
+  "outputs": { "result": "${steps.result.text}" }
+}

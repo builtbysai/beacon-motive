@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
-use uiautomation::patterns::{UIInvokePattern, UIValuePattern, UIWindowPattern};
+use uiautomation::patterns::{UIExpandCollapsePattern, UIInvokePattern, UISelectionItemPattern, UITogglePattern, UIValuePattern, UIWindowPattern};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
 
 #[derive(Deserialize)]
@@ -279,7 +279,9 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> R
             if el.is_password().unwrap_or(false) {
                 return fail("denied", "password fields are never read");
             }
-            Ok(json!({"text": read_text(&el), "name": el.get_name().unwrap_or_default(), "enabled": el.is_enabled().unwrap_or(false)}))
+            let toggle = el.get_pattern::<UITogglePattern>().ok().and_then(|t| t.get_toggle_state().ok()).map(|st| format!("{st:?}").to_lowercase());
+            let selected = el.get_pattern::<UISelectionItemPattern>().ok().and_then(|t| t.is_selected().ok());
+            Ok(json!({"text": read_text(&el), "name": el.get_name().unwrap_or_default(), "enabled": el.is_enabled().unwrap_or(false), "toggle": toggle, "selected": selected}))
         }
         "element.invoke" => {
             let win = cached_window(a, w, c, &p["window"])?;
@@ -287,12 +289,59 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> R
             if !el.is_enabled().unwrap_or(false) {
                 return fail("not_actionable", "control is disabled");
             }
-            let pattern = match el.get_pattern::<UIInvokePattern>() {
+            // Activate the way the control itself offers: press, toggle, choose, or open.
+            if let Ok(pattern) = el.get_pattern::<UIInvokePattern>() {
+                uia(pattern.invoke())?;
+                return Ok(json!({"invoked": true, "how": "invoke"}));
+            }
+            if let Ok(pattern) = el.get_pattern::<UITogglePattern>() {
+                uia(pattern.toggle())?;
+                return Ok(json!({"invoked": true, "how": "toggle"}));
+            }
+            if let Ok(pattern) = el.get_pattern::<UISelectionItemPattern>() {
+                uia(pattern.select())?;
+                return Ok(json!({"invoked": true, "how": "select"}));
+            }
+            if let Ok(pattern) = el.get_pattern::<UIExpandCollapsePattern>() {
+                uia(pattern.expand())?;
+                return Ok(json!({"invoked": true, "how": "expand"}));
+            }
+            fail("unsupported", "control cannot be pressed, toggled, selected or expanded")
+        }
+        "element.select" => {
+            // Opens the container (a combo box) when given, then chooses the named item.
+            let win = cached_window(a, w, c, &p["window"])?;
+            if !p["container"].is_null() {
+                let container = find_target(w, &win, &p["container"])?;
+                if let Ok(pattern) = container.get_pattern::<UIExpandCollapsePattern>() {
+                    uia(pattern.expand())?;
+                }
+            }
+            let el = find_target(w, &win, &p["target"])?;
+            let pattern = match el.get_pattern::<UISelectionItemPattern>() {
                 Ok(p) => p,
-                Err(_) => return fail("unsupported", "control does not support Invoke"),
+                Err(_) => return fail("unsupported", "item cannot be selected"),
             };
-            uia(pattern.invoke())?;
-            Ok(json!({"invoked": true}))
+            uia(pattern.select())?;
+            if !p["container"].is_null() {
+                if let Ok(container) = find_target(w, &win, &p["container"]) {
+                    if let Ok(pattern) = container.get_pattern::<UIExpandCollapsePattern>() {
+                        let _ = pattern.collapse();
+                    }
+                }
+            }
+            Ok(json!({"selected": true}))
+        }
+        "element.type" => {
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
+            if !el.is_enabled().unwrap_or(false) {
+                return fail("not_actionable", "control is disabled");
+            }
+            let text = p["text"].as_str().unwrap_or_default();
+            uia(el.set_focus())?;
+            uia(el.send_text(text, 8))?;
+            Ok(json!({"typed": text.chars().count()}))
         }
         "element.setValue" => {
             let win = cached_window(a, w, c, &p["window"])?;

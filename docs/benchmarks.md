@@ -16,6 +16,10 @@ Engine process peak RSS about 115–137 MB (excludes Chrome and Calculator). One
 
 Not measured yet: CPU use, large trees, cold start of the helper, other hardware.
 
+## Native Windows Forms app (`windows-form-fixture`, 14 steps)
+
+10/10 successful, wall median 1053 ms (p95 1184 ms): typing two fields, toggling a checkbox, choosing a combo and a list item, a button, a menu, close. Per op median: win.launch 228, win.type 257 (8 ms per character pacing, 11 + 5 characters), win.click 56, win.setValue 48, win.select 55, win.read 5, win.close 15 ms.
+
 ## Android (Pixel 7a, Android 17, USB)
 
 `android-settings-tour` (7 steps), 2 real runs: 10.5 s and 10.9 s, both successful. Per op: android.key about 70–90 ms, android.launch 420–880 ms, each click/read/wait that observes the screen 2.2–2.8 s (dominated by `uiautomator dump`). Two runs is not a benchmark; it is a sanity figure.

@@ -14,7 +14,7 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Workflow format v1 + validation | Done | `test/engine.test.ts`; no branches/loops/subflows yet (reserved) |
 | Engine: cancel, deadline, retry, postcondition polling, concurrency, emergency stop | Done | unit tests with a controllable adapter, plus real runs |
 | Browser adapter (Playwright, installed Chrome) | Partial | open/fill/click/read/wait validated on a local fixture page in Chrome; Edge, Firefox, multiple tabs/frames, downloads, file upload not done |
-| Windows adapter | Partial | Calculator (UWP) driven by UI Automation: launch, invoke, read, close. Not done: window focus/keyboard text entry fallback, menus, trees/lists/grids, element change events, elevated windows (reported as unreachable by design), DPI/multi-monitor, menus; resolved windows/controls are cached (re-validated each use; a window renamed in place would still be matched until it goes away) |
+| Windows adapter | Partial | Validated on Calculator (UWP) and a purpose-built native WinForms app (`npm run build:fixture`): launch, press/toggle/select/expand, setValue, keyboard typing (`win.type`), list select, combo via value, menus, read text/toggle state, close. Shells/interpreters can never be launched. Password boxes are never read. Not done: trees/grids, element change events, drag, elevated windows (reported unreachable by design), DPI/multi-monitor, combos that only open via a popup window, WPF/Qt/Electron/Java apps (untested). Resolved windows/controls are cached (a window renamed in place would still match until it goes away) |
 | Filesystem adapter | Done (minimal) | read/write inside declared dirs; symlink/junction escape tested |
 | SQLite persistence | Done | `node:sqlite` is experimental in Node 22 |
 | CLI | Done | `capabilities validate save list run history inspect serve audit` |
@@ -57,5 +57,5 @@ Desktop app (Tauri 2 against the local API), installer and prebuilt helper, sche
 
 ## Next highest-value work
 
-1. A Windows `win.type`/menu/list capability and a second real app (Notepad or a purpose-built fixture window), then Windows recording via UIA events.
+1. Windows recording via UIA events (focus/invoke/value-change), then compile to `win.*` steps with the same constants/variables and secrets rules.
 2. Real use of `motive record` by a person on a real website, to find what the fixtures hide (iframes, new tabs, shadow DOM).
