@@ -14,17 +14,28 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Workflow format v1 + validation | Done | `test/engine.test.ts`; no branches/loops/subflows yet (reserved) |
 | Engine: cancel, deadline, retry, postcondition polling, concurrency, emergency stop | Done | unit tests with a controllable adapter, plus real runs |
 | Browser adapter (Playwright, installed Chrome) | Partial | open/fill/click/read/wait validated on a local fixture page in Chrome; Edge, Firefox, multiple tabs/frames, downloads, file upload not done |
-| Windows adapter | Partial | Calculator (UWP) driven by UI Automation: launch, invoke, read, close. Not done: window focus/keyboard text entry fallback, menus, trees/lists/grids, element change events, elevated windows (reported as unreachable by design), DPI/multi-monitor, per-call caching (each call costs ~70 ms because the window is re-resolved) |
+| Windows adapter | Partial | Calculator (UWP) driven by UI Automation: launch, invoke, read, close. Not done: window focus/keyboard text entry fallback, menus, trees/lists/grids, element change events, elevated windows (reported as unreachable by design), DPI/multi-monitor, menus; resolved windows/controls are cached (re-validated each use; a window renamed in place would still be matched until it goes away) |
 | Filesystem adapter | Done (minimal) | read/write inside declared dirs; symlink/junction escape tested |
 | SQLite persistence | Done | `node:sqlite` is experimental in Node 22 |
 | CLI | Done | `capabilities validate save list run history inspect serve audit` |
 | Local API | Partial | auth, Host/Origin checks, SSE events, cancel, stop, audit tested; no rate limit, no HTTPS (loopback only) |
 | Secrets | Partial | redacted in history/outputs/errors (tested); not in OS keychain; typed text could still be visible on screen |
-| Cross-application workflow | Not shown | each example is one surface; a mixed browser+desktop+file workflow still needs a demo |
+| Cross-application workflow | Done | `examples/mixed-calc-to-web.json`: Calculator → file → read back → web form, verified end to end (test + 10/10 benchmark) |
 
-## Milestone 2 — Teach and Replay: not started
+## Milestone 2 — Teach and Replay: started (browser only)
 
-Explicit recorder (browser first: DOM events → semantic steps), constant vs variable detection, multiple-demonstration induction, edit/review UI, redaction of password fields at capture. Decision pending on importing OpenAdapt recordings through an isolated Python worker.
+| Item | State | Evidence / limit |
+| --- | --- | --- |
+| Explicit, visible browser recorder (`motive record`) | Partial | headed launch + abort checked by hand; two demonstrations recorded headless in tests; the interactive "close the window" flow has not been used by a person yet |
+| Semantic targets verified against the touched element | Done | tests; ambiguous actions are refused |
+| Secret fields never captured | Done for password/otp/card-like fields | tested with a password and a card number; detection is heuristic |
+| Compile with variables, secrets, scopes | Done | recorded workflow replayed with different values and passed |
+| Expected-result verification | Partial | `--expect-text` only; no in-page marking |
+| Multi-demonstration induction, healing proposals | Not started | |
+| Windows (desktop) recording | Not started | needs UIA event subscription; design pending |
+| Edit/review UI | Not started | file is plain JSON for now |
+
+Decision still pending on importing OpenAdapt recordings through an isolated Python worker. See ADR 0004.
 
 ## Milestone 3 — Platform expansion: not started
 
@@ -40,6 +51,6 @@ Desktop app (Tauri 2 against the local API), installer and prebuilt helper, sche
 
 ## Next highest-value work
 
-1. A mixed workflow (browser → desktop → file) and a Windows `win.type`/menu/list capability, using a second real app (Notepad or a purpose-built fixture window).
-2. Cache the resolved window element in the sidecar to cut per-call latency.
-3. Browser recorder (Milestone 2 start), since Teach Mode is the main differentiator.
+1. Multi-demonstration induction (diff two recordings to separate constants from variables) and healing proposals when a recorded target stops matching.
+2. A Windows `win.type`/menu/list capability and a second real app (Notepad or a purpose-built fixture window), then Windows recording via UIA events.
+3. Real use of `motive record` by a person on a real website, to find what the fixtures hide (iframes, new tabs, shadow DOM).

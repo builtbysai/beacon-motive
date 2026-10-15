@@ -8,6 +8,9 @@ import { startServer } from "./server.ts";
 import { Store } from "./store.ts";
 import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
+import { compile } from "./record/compile.ts";
+import { recordSession } from "./record/recorder.ts";
+import { writeFileSync } from "node:fs";
 
 const USAGE = `motive <command>
 
@@ -17,6 +20,8 @@ const USAGE = `motive <command>
   list                               stored workflows
   run <name|file.json> [-i k=v ...]  run a workflow (Ctrl-C cancels); --json prints the final record
   history [run-id]                   past runs, or one run in detail
+  record <url> --name <n> [--out f.json] [--expect-text t] [--save]
+                                     Teach Mode: demonstrate in a visible browser, close it to finish
   inspect windows                    top-level windows (Windows)
   inspect tree --window <name> [--depth n]
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
@@ -49,6 +54,10 @@ async function main(): Promise<number> {
       port: { type: "string" },
       window: { type: "string" },
       depth: { type: "string" },
+      name: { type: "string" },
+      out: { type: "string" },
+      "expect-text": { type: "string" },
+      save: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -133,6 +142,23 @@ async function main(): Promise<number> {
           if (r.error) console.log(`${r.error.code}: ${r.error.message}`);
         }
         return r.status === "succeeded" ? 0 : r.status === "cancelled" ? 130 : 1;
+      }
+      case "record": {
+        if (!arg || !values.name) throw new Error("usage: motive record <url> --name <workflow-name> [--out file.json] [--expect-text t] [--save]");
+        const abort = new AbortController();
+        process.once("SIGINT", () => abort.abort());
+        const steps = await recordSession(arg, () => console.log("● Recording. Do the task in the browser window; close it (or press Ctrl-C) to finish. Passwords are not captured."), abort.signal);
+        const { workflow, warnings } = compile(steps, { name: values.name, ...(values["expect-text"] ? { expectText: values["expect-text"] } : {}) });
+        const out = values.out ?? `${values.name}.json`;
+        writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
+        console.log(`Wrote ${out}: ${workflow.steps.length} steps, inputs: ${Object.keys(workflow.inputs).join(", ") || "none"}, scopes: ${JSON.stringify(workflow.scopes)}`);
+        for (const w of warnings) console.log(`  ! ${w}`);
+        if (values.save) {
+          store.saveWorkflow(workflow);
+          store.audit("cli", "workflow.save", { name: workflow.name, recorded: true });
+          console.log("Saved to the library.");
+        } else console.log("Review the file, then: motive save " + out);
+        return 0;
       }
       case "history": {
         if (arg) console.log(JSON.stringify(store.getRun(arg), null, 2));

@@ -7,7 +7,7 @@ import { MotiveError } from "../errors.ts";
 import { checkDir } from "./fs.ts";
 import type { Adapter, OpContext, OpDef } from "./types.ts";
 
-const Target = z
+export const Target = z
   .object({
     role: z.string().optional(),
     name: z.string().optional(),
@@ -18,9 +18,20 @@ const Target = z
     exact: z.boolean().default(false),
   })
   .strict();
-type Target = z.infer<typeof Target>;
+export type Target = z.infer<typeof Target>;
 
-function chromePath(): string | undefined {
+/** The one place a semantic target becomes a Playwright locator; the recorder validates targets with it too. */
+export function buildLocator(page: Page, t: Target): Locator {
+  const { role, name, label, text, testId, css, exact } = t;
+  if (role) return page.getByRole(role as Parameters<Page["getByRole"]>[0], { ...(name ? { name } : {}), exact });
+  if (label) return page.getByLabel(label, { exact });
+  if (text) return page.getByText(text, { exact });
+  if (testId) return page.getByTestId(testId);
+  if (css) return page.locator(css);
+  throw new MotiveError("invalid_args", "target needs one of role, label, text, testId, css");
+}
+
+export function chromePath(): string | undefined {
   const candidates = [
     process.env.MOTIVE_CHROME,
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -42,13 +53,7 @@ export function browserAdapter(): Adapter {
 
   function locate(t: Target): Locator {
     if (!page) throw new MotiveError("precondition_failed", "no page is open; run browser.open first");
-    const { role, name, label, text, testId, css, exact } = t;
-    if (role) return page.getByRole(role as Parameters<Page["getByRole"]>[0], { ...(name ? { name } : {}), exact });
-    if (label) return page.getByLabel(label, { exact });
-    if (text) return page.getByText(text, { exact });
-    if (testId) return page.getByTestId(testId);
-    if (css) return page.locator(css);
-    throw new MotiveError("invalid_args", "target needs one of role, label, text, testId, css");
+    return buildLocator(page, t);
   }
 
   /** Playwright errors become structured ones; auto-waiting already covered visibility/enabled/stability. */
@@ -144,6 +149,28 @@ export function browserAdapter(): Adapter {
       }),
   };
 
+  const select: OpDef = {
+    name: "browser.select",
+    idempotent: true,
+    args: z.object({ target: Target, option: z.string() }).strict(),
+    run: (a: { target: Target; option: string }, ctx) =>
+      guarded(ctx, async () => {
+        await locate(a.target).selectOption({ label: a.option }, { timeout: ctx.budgetMs });
+        return { selected: a.option };
+      }),
+  };
+
+  const press: OpDef = {
+    name: "browser.press",
+    idempotent: false,
+    args: z.object({ target: Target, key: z.enum(["Enter", "Escape", "Tab"]) }).strict(),
+    run: (a: { target: Target; key: string }, ctx) =>
+      guarded(ctx, async () => {
+        await locate(a.target).press(a.key, { timeout: ctx.budgetMs });
+        return { pressed: a.key };
+      }),
+  };
+
   const wait: OpDef = {
     name: "browser.wait",
     idempotent: true,
@@ -157,12 +184,12 @@ export function browserAdapter(): Adapter {
 
   return {
     id: "browser",
-    ops: [open, click, fill, read, wait],
+    ops: [open, click, fill, select, press, read, wait],
     capability: () => ({
       adapter: "browser",
       available: Boolean(executable),
       ...(executable ? {} : { reason: "No Chrome or Edge found (set MOTIVE_CHROME)" }),
-      ops: ["browser.open", "browser.click", "browser.fill", "browser.read", "browser.wait"],
+      ops: ["browser.open", "browser.click", "browser.fill", "browser.select", "browser.press", "browser.read", "browser.wait"],
     }),
     async dispose() {
       disposed = true;

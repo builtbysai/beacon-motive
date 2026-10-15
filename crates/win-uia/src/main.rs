@@ -3,6 +3,7 @@
 //! windows are found by name/class/process, controls by automation id / name / control type.
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use uiautomation::patterns::{UIInvokePattern, UIValuePattern, UIWindowPattern};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
@@ -198,7 +199,46 @@ fn read_text(e: &UIElement) -> String {
     e.get_name().unwrap_or_default()
 }
 
-fn handle(a: &UIAutomation, w: &UITreeWalker, req: &Request) -> Res {
+/// Elements resolved earlier, keyed by the selector text. A cached element is reused only while it still answers;
+/// otherwise it is dropped and the selector is resolved again, so a closed or re-created control is never acted on.
+#[derive(Default)]
+struct Cache {
+    windows: HashMap<String, UIElement>,
+    targets: HashMap<String, UIElement>,
+}
+
+fn alive(e: &UIElement) -> bool {
+    e.get_process_id().is_ok() && e.get_bounding_rectangle().is_ok()
+}
+
+fn cached_window(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, v: &Value) -> Result<UIElement, Failure> {
+    let key = v.to_string();
+    if let Some(e) = c.windows.get(&key) {
+        if alive(e) {
+            return Ok(e.clone());
+        }
+        c.windows.remove(&key);
+        c.targets.retain(|k, _| !k.starts_with(&key));
+    }
+    let e = find_window(a, w, v)?;
+    c.windows.insert(key, e.clone());
+    Ok(e)
+}
+
+fn cached_target(w: &UITreeWalker, c: &mut Cache, win: &UIElement, wsel: &Value, tsel: &Value) -> Result<UIElement, Failure> {
+    let key = format!("{}|{}", wsel, tsel);
+    if let Some(e) = c.targets.get(&key) {
+        if alive(e) {
+            return Ok(e.clone());
+        }
+        c.targets.remove(&key);
+    }
+    let e = find_target(w, win, tsel)?;
+    c.targets.insert(key, e.clone());
+    Ok(e)
+}
+
+fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> Res {
     let p = &req.params;
     match req.method.as_str() {
         "ping" => Ok(json!({"pong": true})),
@@ -211,11 +251,13 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, req: &Request) -> Res {
                     .collect(),
             ))
         }
-        "window.find" => Ok(describe(&find_window(a, w, &p["window"])?)),
+        "window.find" => Ok(describe(&cached_window(a, w, c, &p["window"])?)),
         "window.close" => {
-            let win = find_window(a, w, &p["window"])?;
+            let win = cached_window(a, w, c, &p["window"])?;
             let pattern = uia(win.get_pattern::<UIWindowPattern>())?;
             uia(pattern.close())?;
+            c.windows.clear();
+            c.targets.clear();
             Ok(json!({"closed": true}))
         }
         "tree" => {
@@ -225,23 +267,23 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, req: &Request) -> Res {
             Ok(tree(w, &win, depth, &mut budget))
         }
         "element.find" => {
-            let win = find_window(a, w, &p["window"])?;
-            let el = find_target(w, &win, &p["target"])?;
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
             let mut d = describe(&el);
             d["text"] = Value::String(read_text(&el));
             Ok(d)
         }
         "element.read" => {
-            let win = find_window(a, w, &p["window"])?;
-            let el = find_target(w, &win, &p["target"])?;
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
             if el.is_password().unwrap_or(false) {
                 return fail("denied", "password fields are never read");
             }
             Ok(json!({"text": read_text(&el), "name": el.get_name().unwrap_or_default(), "enabled": el.is_enabled().unwrap_or(false)}))
         }
         "element.invoke" => {
-            let win = find_window(a, w, &p["window"])?;
-            let el = find_target(w, &win, &p["target"])?;
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
             if !el.is_enabled().unwrap_or(false) {
                 return fail("not_actionable", "control is disabled");
             }
@@ -253,8 +295,8 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, req: &Request) -> Res {
             Ok(json!({"invoked": true}))
         }
         "element.setValue" => {
-            let win = find_window(a, w, &p["window"])?;
-            let el = find_target(w, &win, &p["target"])?;
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
             if !el.is_enabled().unwrap_or(false) {
                 return fail("not_actionable", "control is disabled");
             }
@@ -281,13 +323,14 @@ fn main() {
     let walker = automation.get_control_view_walker().expect("control view walker");
     let stdin = std::io::stdin();
     let mut out = std::io::stdout().lock();
+    let mut cache = Cache::default();
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
             continue;
         }
         let reply = match serde_json::from_str::<Request>(&line) {
-            Ok(req) => match handle(&automation, &walker, &req) {
+            Ok(req) => match handle(&automation, &walker, &mut cache, &req) {
                 Ok(result) => json!({"id": req.id, "ok": true, "result": result}),
                 Err(f) => json!({"id": req.id, "ok": false, "error": {"code": f.code, "message": f.message}}),
             },

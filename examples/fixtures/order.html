@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Order fixture</title></head>
+<body>
+<main>
+  <h1>Order</h1>
+  <form id="f">
+    <label for="size">Size</label>
+    <select id="size"><option>Small</option><option>Medium</option><option>Large</option></select>
+    <label for="who">Customer</label>
+    <input id="who" type="text">
+    <label for="card">Card number</label>
+    <input id="card" name="cardNumber" type="text">
+  </form>
+  <p id="result" role="status"></p>
+</main>
+<script>
+  // Pressing Enter in the customer field submits; nothing is sent anywhere.
+  document.getElementById("who").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const size = document.getElementById("size").value;
+    const who = document.getElementById("who").value;
+    document.getElementById("result").textContent = "Ordered " + size + " for " + who;
+  });
+</script>
+</body>
+</html>

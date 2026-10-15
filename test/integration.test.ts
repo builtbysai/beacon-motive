@@ -48,6 +48,13 @@ test("real Windows app: Calculator adds through UI Automation and verifies", { s
   assert.equal(r.outputs?.display, "Display is 10");
 });
 
+test("real desktop + file + browser in one workflow", { skip: (!hasWindows || !hasBrowser) && "needs Windows helper and Chrome" }, async () => {
+  const e = new Engine(new Store(":memory:"));
+  const r = await e.start(example("mixed-calc-to-web.json"), { a: 9, b: 9 }).done;
+  assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+  assert.equal(r.outputs?.greeting, "Hello, Display is 18!");
+});
+
 // ---- API security ------------------------------------------------------------------------------------------
 
 function request(port: number, opts: { path: string; method?: string; headers?: Record<string, string>; body?: unknown }): Promise<{ status: number; json: any }> {

@@ -1,0 +1,27 @@
+{
+  "format": "motive.workflow/1",
+  "name": "mixed-calc-to-web",
+  "description": "Adds in Calculator (desktop), saves the displayed result to a file (filesystem), reads it back, and submits it in a web form (browser). Windows only.",
+  "inputs": {
+    "a": { "type": "number", "default": 7 },
+    "b": { "type": "number", "default": 8 }
+  },
+  "scopes": { "apps": ["calc.exe"], "dirs": ["./examples"] },
+  "steps": [
+    { "id": "open", "op": "win.launch", "args": { "command": "calc.exe", "window": { "name": "Calculator" } }, "timeoutMs": 15000 },
+    { "id": "clear", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "clearButton" } } },
+    { "id": "digitA", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "num${inputs.a}Button" } } },
+    { "id": "plus", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "plusButton" } } },
+    { "id": "digitB", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "num${inputs.b}Button" } } },
+    { "id": "equals", "op": "win.click", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "equalButton" } } },
+    { "id": "result", "op": "win.read", "args": { "window": { "name": "Calculator" }, "target": { "automationId": "CalculatorResults" } }, "post": [{ "matches": { "value": "${out.text}", "pattern": "^Display is [0-9]+$" } }] },
+    { "id": "close", "op": "win.close", "args": { "window": { "name": "Calculator" } } },
+    { "id": "save", "op": "fs.write", "args": { "path": "./examples/out/result.txt", "content": "${steps.result.text}" } },
+    { "id": "readBack", "op": "fs.read", "args": { "path": "./examples/out/result.txt" }, "post": [{ "equals": { "value": "${out.text}", "to": "${steps.result.text}" } }] },
+    { "id": "page", "op": "browser.open", "args": { "url": "./examples/fixtures/form.html" } },
+    { "id": "name", "op": "browser.fill", "args": { "target": { "label": "Your name" }, "value": "${steps.readBack.text}" } },
+    { "id": "go", "op": "browser.click", "args": { "target": { "role": "button", "name": "Greet" } } },
+    { "id": "greeting", "op": "browser.read", "args": { "target": { "role": "status" } }, "post": [{ "equals": { "value": "${out.text}", "to": "Hello, ${steps.readBack.text}!" } }] }
+  ],
+  "outputs": { "greeting": "${steps.greeting.text}" }
+}

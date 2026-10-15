@@ -186,7 +186,18 @@ export function windowsAdapter(): Adapter {
     async run(a, ctx) {
       const c = win();
       await settle(ctx, () => c.call("window.close", a));
-      return { closed: true };
+      // Close is a request; wait until the window is really gone so the next step sees the true state.
+      const deadline = Date.now() + ctx.budgetMs;
+      for (;;) {
+        if (ctx.signal.aborted) throw new MotiveError("cancelled", "cancelled");
+        const gone = await c.call("window.find", a).then(
+          () => false,
+          (e: MotiveError) => (e.code === "not_found" ? true : Promise.reject(e)),
+        );
+        if (gone) return { closed: true };
+        if (Date.now() >= deadline) throw new MotiveError("timeout", "the window did not close (it may be asking to save something)", { retryable: false });
+        await new Promise((r) => setTimeout(r, 25));
+      }
     },
   };
 
