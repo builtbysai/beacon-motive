@@ -27,6 +27,8 @@ export class WinClient {
   private next = 1;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   calls = 0;
+  /** Unsolicited events from record mode. */
+  onEvent?: (e: any) => void;
 
   constructor(exe: string) {
     this.child = spawn(exe, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
@@ -37,6 +39,7 @@ export class WinClient {
       } catch {
         return;
       }
+      if ((r as any).event === "record") return this.onEvent?.(r);
       const p = this.pending.get(r.id);
       if (!p) return;
       this.pending.delete(r.id);
@@ -217,6 +220,19 @@ export function windowsAdapter(): Adapter {
     },
   };
 
+  const keys: OpDef = {
+    name: "win.keys",
+    idempotent: false,
+    args: z
+      .object({ window: WindowSel, target: TargetSel, keys: z.string().regex(/^(\{(enter|tab|esc|space|up|down|left|right|backspace|delete|home|end)\})+$/i, "only {enter} {tab} {esc} {space} {up} {down} {left} {right} {backspace} {delete} {home} {end}") })
+      .strict(),
+    async run(a, ctx) {
+      const c = win();
+      await settle(ctx, () => c.call("element.keys", a));
+      return { sent: true };
+    },
+  };
+
   const close: OpDef = {
     name: "win.close",
     idempotent: false,
@@ -249,7 +265,7 @@ export function windowsAdapter(): Adapter {
     },
   };
 
-  const ops = [launch, wait, click, setValue, type, select, read, close, tree];
+  const ops = [launch, wait, click, setValue, type, keys, select, read, close, tree];
   return {
     id: "windows",
     ops,

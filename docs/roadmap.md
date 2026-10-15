@@ -33,7 +33,7 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Expected-result verification | Partial | `--expect-text` only; no in-page marking |
 | Multi-demonstration induction (`motive induce`) | Done for browser recordings | two demonstrations of an order form: select value constant, customer variable; merged workflow replayed with a third value. Structural differences are refused. Identical values are treated as constant and flagged, since they cannot prove it |
 | Healing proposals when a target stops matching | Done for browser and Windows controls | record → relabel the page → replay fails with one validated proposal (ambiguous selectors rejected) → `motive heal --apply` → replay passes. Alternatives only; no fuzzy search; not for Android. ADR 0006 |
-| Windows (desktop) recording | Not started | needs UIA event subscription; design pending |
+| Windows (desktop) recording (`motive record-win`, ADR 0007) | Partial | Calculator: 5 recorded invocations compiled and replayed to the right result. Native WinForms app: typed values, password (not captured), combo and list choices recorded and replayed. WinForms raises no events for button presses or checkbox toggles so those are not recorded there; real mouse-click events, WPF/Qt/Electron/Java untested; interactive Ctrl-C session not used by a person yet |
 | Edit/review UI | Not started | file is plain JSON for now |
 
 Decision still pending on importing OpenAdapt recordings through an isolated Python worker. See ADR 0004.
@@ -57,5 +57,4 @@ Desktop app (Tauri 2 against the local API), installer and prebuilt helper, sche
 
 ## Next highest-value work
 
-1. Windows recording via UIA events (focus/invoke/value-change), then compile to `win.*` steps with the same constants/variables and secrets rules.
-2. Real use of `motive record` by a person on a real website, to find what the fixtures hide (iframes, new tabs, shadow DOM).
+1. Real use of `motive record` by a person on a real website, to find what the fixtures hide (iframes, new tabs, shadow DOM).

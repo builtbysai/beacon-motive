@@ -10,6 +10,7 @@ import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
 import { compile } from "./record/compile.ts";
 import { induce } from "./record/induce.ts";
+import { compileWindow, recordWindow } from "./record/windows.ts";
 import { applyProposal, proposalsFor } from "./heal.ts";
 import { recordSession } from "./record/recorder.ts";
 import { writeFileSync } from "node:fs";
@@ -24,6 +25,8 @@ const USAGE = `motive <command>
   history [run-id]                   past runs, or one run in detail
   record <url> --name <n> [--out f.json] [--expect-text t] [--save]
                                      Teach Mode: demonstrate in a visible browser, close it to finish
+  record-win --window <title> --name <n> [--command exe] [--expect id:text] [--out f.json] [--save]
+                                     Teach Mode for a Windows app (a red indicator shows while recording)
   induce <a.json> <b.json> [...] --name <n> [--out f.json]
                                      merge several recordings: variables vs constants
   heal <run-id> [--apply <step>[:n] [--file wf.json]]
@@ -65,6 +68,8 @@ async function main(): Promise<number> {
       "expect-text": { type: "string" },
       save: { type: "boolean", default: false },
       apply: { type: "string" },
+      command: { type: "string" },
+      expect: { type: "string" },
       file: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -157,6 +162,24 @@ async function main(): Promise<number> {
         process.once("SIGINT", () => abort.abort());
         const steps = await recordSession(arg, () => console.log("● Recording. Do the task in the browser window; close it (or press Ctrl-C) to finish. Passwords are not captured."), abort.signal);
         const { workflow, warnings } = compile(steps, { name: values.name, ...(values["expect-text"] ? { expectText: values["expect-text"] } : {}) });
+        const out = values.out ?? `${values.name}.json`;
+        writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
+        console.log(`Wrote ${out}: ${workflow.steps.length} steps, inputs: ${Object.keys(workflow.inputs).join(", ") || "none"}, scopes: ${JSON.stringify(workflow.scopes)}`);
+        for (const w of warnings) console.log(`  ! ${w}`);
+        if (values.save) {
+          store.saveWorkflow(workflow);
+          store.audit("cli", "workflow.save", { name: workflow.name, recorded: true });
+          console.log("Saved to the library.");
+        } else console.log("Review the file, then: motive save " + out);
+        return 0;
+      }
+      case "record-win": {
+        if (!values.window || !values.name) throw new Error("usage: motive record-win --window <title> --name <n> [--command <exe>] [--expect <automationId>:<text>] [--out f.json] [--save]");
+        const abort = new AbortController();
+        process.once("SIGINT", () => abort.abort());
+        const steps = await recordWindow({ name: values.window }, abort.signal, () => console.log(`● Recording "${values.window}". Do the task in that window; press Ctrl-C here to finish. Passwords are not captured.`));
+        const [id, ...rest] = (values.expect ?? "").split(":");
+        const { workflow, warnings } = compileWindow(steps, { name: values.name, window: values.window, ...(values.command ? { command: values.command } : {}), ...(values.expect && id && rest.length ? { expect: { automationId: id, text: rest.join(":") } } : {}) });
         const out = values.out ?? `${values.name}.json`;
         writeFileSync(out, JSON.stringify(workflow, null, 2) + "\n");
         console.log(`Wrote ${out}: ${workflow.steps.length} steps, inputs: ${Object.keys(workflow.inputs).join(", ") || "none"}, scopes: ${JSON.stringify(workflow.scopes)}`);

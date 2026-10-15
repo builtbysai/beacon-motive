@@ -6,7 +6,19 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use uiautomation::patterns::{UIExpandCollapsePattern, UIInvokePattern, UISelectionItemPattern, UITogglePattern, UIValuePattern, UIWindowPattern};
+use std::sync::Mutex;
+use uiautomation::events::{CustomEventHandlerFn, CustomPropertyChangedEventHandlerFn, UIEventHandler, UIPropertyChangedEventHandler};
+use uiautomation::types::{TreeScope, UIProperty};
 use uiautomation::{UIAutomation, UIElement, UITreeWalker};
+
+/// Replies and recorded events both go to stdout, from different threads, one JSON object per line.
+static OUT: Mutex<()> = Mutex::new(());
+fn emit(v: &Value) {
+    let _guard = OUT.lock().unwrap();
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "{v}");
+    let _ = out.flush();
+}
 
 #[derive(Deserialize)]
 struct Request {
@@ -205,6 +217,7 @@ fn read_text(e: &UIElement) -> String {
 struct Cache {
     windows: HashMap<String, UIElement>,
     targets: HashMap<String, UIElement>,
+    recording: Option<(UIElement, UIEventHandler, UIEventHandler, UIPropertyChangedEventHandler)>,
 }
 
 fn alive(e: &UIElement) -> bool {
@@ -265,6 +278,62 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> R
             let depth = p["depth"].as_u64().unwrap_or(4).min(12) as u32;
             let mut budget = p["maxNodes"].as_u64().unwrap_or(500).min(5000) as u32;
             Ok(tree(w, &win, depth, &mut budget))
+        }
+        "record.start" => {
+            if c.recording.is_some() {
+                return fail("precondition_failed", "already recording");
+            }
+            let win = find_window(a, w, &p["window"])?;
+            // What the user did, described by the control and never by its secret contents.
+            let report = move |kind: &'static str, sender: &UIElement, extra: Value| {
+                let password = sender.is_password().unwrap_or(false);
+                let mut ev = json!({"event": "record", "kind": kind, "element": describe(sender), "password": password});
+                if !password {
+                    if let Value::Object(m) = extra {
+                        for (k, v) in m {
+                            ev[k] = v;
+                        }
+                    }
+                }
+                emit(&ev);
+            };
+            let r1 = report.clone();
+            let invoke_fn: Box<CustomEventHandlerFn> = Box::new(move |sender, _t| {
+                r1("invoke", sender, json!({}));
+                Ok(())
+            });
+            let invoke_handler = UIEventHandler::from(invoke_fn);
+            let r2 = report.clone();
+            let select_fn: Box<CustomEventHandlerFn> = Box::new(move |sender, _t| {
+                r2("select", sender, json!({"text": sender.get_name().unwrap_or_default()}));
+                Ok(())
+            });
+            let select_handler = UIEventHandler::from(select_fn);
+            let r3 = report.clone();
+            let prop_fn: Box<CustomPropertyChangedEventHandlerFn> = Box::new(move |sender, prop, _v| {
+                if prop == UIProperty::ValueValue {
+                    let text = sender.get_pattern::<UIValuePattern>().ok().and_then(|v| v.get_value().ok()).unwrap_or_default();
+                    r3("value", sender, json!({"text": text}));
+                } else {
+                    let st = sender.get_pattern::<UITogglePattern>().ok().and_then(|t| t.get_toggle_state().ok()).map(|st| format!("{st:?}").to_lowercase());
+                    r3("toggle", sender, json!({"toggle": st}));
+                }
+                Ok(())
+            });
+            let prop_handler = UIPropertyChangedEventHandler::from(prop_fn);
+            uia(a.add_automation_event_handler(uiautomation::events::UIEventType::Invoke_Invoked, &win, TreeScope::Subtree, None, &invoke_handler))?;
+            uia(a.add_automation_event_handler(uiautomation::events::UIEventType::SelectionItem_ElementSelected, &win, TreeScope::Subtree, None, &select_handler))?;
+            uia(a.add_property_changed_event_handler(&win, TreeScope::Subtree, None, &prop_handler, &[UIProperty::ValueValue, UIProperty::ToggleToggleState]))?;
+            c.recording = Some((win, invoke_handler, select_handler, prop_handler));
+            Ok(json!({"recording": true}))
+        }
+        "record.stop" => {
+            if let Some((win, h1, h2, h3)) = c.recording.take() {
+                let _ = a.remove_automation_event_handler(uiautomation::events::UIEventType::Invoke_Invoked, &win, &h1);
+                let _ = a.remove_automation_event_handler(uiautomation::events::UIEventType::SelectionItem_ElementSelected, &win, &h2);
+                let _ = a.remove_property_changed_event_handler(&win, &h3);
+            }
+            Ok(json!({"recording": false}))
         }
         "element.find" => {
             let win = cached_window(a, w, c, &p["window"])?;
@@ -332,6 +401,29 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> R
             }
             Ok(json!({"selected": true}))
         }
+        "element.keys" => {
+            // Navigation keys only (Enter, Tab, Escape, Space, arrows, Backspace, Delete, Home, End), sent to the focused control.
+            let win = cached_window(a, w, c, &p["window"])?;
+            let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
+            if !el.is_enabled().unwrap_or(false) {
+                return fail("not_actionable", "control is disabled");
+            }
+            let keys = p["keys"].as_str().unwrap_or_default();
+            let allowed = ["enter", "tab", "esc", "space", "up", "down", "left", "right", "backspace", "delete", "home", "end"];
+            let mut rest = keys;
+            if rest.is_empty() {
+                return fail("bad_request", "keys is empty");
+            }
+            while !rest.is_empty() {
+                let Some(end) = rest.find('}') else { return fail("bad_request", "keys must be {name} tokens") };
+                if !rest.starts_with('{') || !allowed.contains(&rest[1..end].to_lowercase().as_str()) {
+                    return fail("denied", "only navigation keys are allowed: enter tab esc space up down left right backspace delete home end");
+                }
+                rest = &rest[end + 1..];
+            }
+            uia(el.send_keys(keys, 20))?;
+            Ok(json!({"sent": true}))
+        }
         "element.type" => {
             let win = cached_window(a, w, c, &p["window"])?;
             let el = cached_target(w, c, &win, &p["window"], &p["target"])?;
@@ -371,7 +463,6 @@ fn main() {
     };
     let walker = automation.get_control_view_walker().expect("control view walker");
     let stdin = std::io::stdin();
-    let mut out = std::io::stdout().lock();
     let mut cache = Cache::default();
     for line in stdin.lock().lines() {
         let Ok(line) = line else { break };
@@ -385,7 +476,6 @@ fn main() {
             },
             Err(e) => json!({"id": 0, "ok": false, "error": {"code": "bad_request", "message": e.to_string()}}),
         };
-        let _ = writeln!(out, "{reply}");
-        let _ = out.flush();
+        emit(&reply);
     }
 }
