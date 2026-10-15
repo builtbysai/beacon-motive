@@ -11,7 +11,7 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 
 | Item | State | Evidence / limit |
 | --- | --- | --- |
-| Workflow format v1 + validation | Done | `test/engine.test.ts`; step-level `when` guards and `forEach` loops (max 100 items, no nesting) added, tested with a controllable adapter only, not yet on a real target; subflows (`flow.call`, max depth 3, scopes can only narrow) added the same way; no schedule/event triggers yet (reserved) |
+| Workflow format v1 + validation | Done | `test/engine.test.ts`; step-level `when` guards and `forEach` loops (max 100 items, no nesting) added, tested with a controllable adapter only, not yet on a real target; subflows (`flow.call`, max depth 3, scopes can only narrow) added the same way; time-based schedules live outside the workflow format (ADR 0011); no event triggers |
 | Engine: cancel, deadline, retry, postcondition polling, concurrency, emergency stop | Done | unit tests with a controllable adapter, plus real runs |
 | Browser adapter (Playwright, installed Chrome) | Partial | open/fill/click/read/wait validated on a local fixture page in Chrome; Edge, Firefox, multiple tabs/frames, downloads, file upload not done |
 | Windows adapter | Partial | Validated on Calculator (UWP) and a purpose-built native WinForms app (`npm run build:fixture`): launch, press/toggle/select/expand, setValue, keyboard typing (`win.type`), list select, combo via value, menus, read text/toggle state, close. Shells/interpreters can never be launched. Password boxes are never read. Not done: trees/grids, element change events, drag, elevated windows (reported unreachable by design), DPI/multi-monitor, combos that only open via a popup window, WPF/Qt/Electron/Java apps (untested). Resolved windows/controls are cached (a window renamed in place would still match until it goes away) |
@@ -59,7 +59,9 @@ Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervi
 | --- | --- | --- |
 | Desktop app (`apps/desktop`, Tauri 2, ADR 0008) | Partial | Workflow library, inputs form, live run view with cancel, run history, audit log, always-visible stop. Built and driven in the real window on Windows 11 (start engine, run with a secret, succeeded); screenshots in `docs/desktop/`; manual check, not in `npm test`. Teach Mode screen added (ADR 0010: visible recording, review, explicit save; verified with a real Chrome but an empty demonstration). No inspector, permissions or editing screens; needs the repo checkout and `node`; unsigned, no installer |
 
-Not started: installer and prebuilt helper, scheduling, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
+| Scheduling (`/v1/schedules`, ADR 0011) | Partial | every-N-minutes and daily-at-time triggers; fires only while the engine runs; busy runs are skipped, never queued; secrets never stored. Fake-clock tests plus one real firing from the desktop app. No cron, event triggers, catch-up or launch-at-login |
+
+Not started: installer and prebuilt helper, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
 
 ## Next highest-value work
 

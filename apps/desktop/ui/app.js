@@ -97,6 +97,7 @@ async function show(view) {
     else if (view === "runs") await runsView();
     else if (view === "audit") await auditView();
     else if (view === "teach") await teachView();
+    else if (view === "schedules") await schedulesView();
     else if (view === "run") await runView(state.runId);
   } catch (e) {
     clear();
@@ -300,4 +301,44 @@ async function discard(id) {
   try { await api("DELETE", `/v1/record/${encodeURIComponent(id)}`); } catch (e) { alert(String(e)); }
   state.recId = null;
   show("teach");
+}
+
+// ---- Schedules ---------------------------------------------------------------------------------------------
+
+function describeEvery(e) {
+  return e.kind === "minutes" ? (e.value === 1 ? "every minute" : `every ${e.value} minutes`) : `daily at ${e.at}`;
+}
+
+async function schedulesView() {
+  const [{ schedules }, { workflows }] = await Promise.all([api("GET", "/v1/schedules"), api("GET", "/v1/workflows")]);
+  clear();
+  const wf = h("select", { id: "sch-wf" }, workflows.map((w) => h("option", { value: w.name }, w.name)));
+  const kind = h("select", { id: "sch-kind" }, h("option", { value: "minutes" }, "Every N minutes"), h("option", { value: "daily" }, "Daily at a time"));
+  const minutes = h("input", { id: "sch-min", type: "number", min: "1", max: "10080", value: "60" });
+  const at = h("input", { id: "sch-at", type: "text", value: "09:00", placeholder: "HH:MM (24 hour)", autocomplete: "off" });
+  const whenBox = h("span", {}, minutes);
+  kind.addEventListener("change", () => whenBox.replaceChildren(kind.value === "minutes" ? minutes : at));
+  const add = h("button", { class: "primary", type: "submit" }, "Add schedule");
+  const form = h("form", { class: "inputs" }, h("label", { for: "sch-wf" }, "Workflow"), wf, h("label", { for: "sch-kind" }, "Repeat"), kind, h("label", {}, "When"), whenBox, h("span", {}), h("div", { class: "row tight" }, add));
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const every = kind.value === "minutes" ? { kind: "minutes", value: Number(minutes.value) } : { kind: "daily", at: at.value.trim() };
+    try {
+      await api("POST", "/v1/schedules", { workflow: wf.value, every });
+      schedulesView();
+    } catch (e) {
+      alert(String(e));
+    }
+  });
+  const rows = schedules.map((s) => h("tr", {},
+    h("td", {}, s.workflow), h("td", {}, describeEvery(s.every)), h("td", {}, s.enabled ? "on" : "off"),
+    h("td", {}, s.lastFiredAt ? `${when(s.lastFiredAt)}: ${s.lastResult}` : "not yet"),
+    h("td", {}, h("button", { class: "ghost", type: "button", onclick: async () => { await api("POST", `/v1/schedules/${encodeURIComponent(s.id)}/${s.enabled ? "disable" : "enable"}`); schedulesView(); } }, s.enabled ? "Pause" : "Resume"), " ",
+      h("button", { class: "ghost", type: "button", onclick: async () => { await api("DELETE", `/v1/schedules/${encodeURIComponent(s.id)}`); schedulesView(); } }, "Delete"))));
+  fill(main,
+    h("h1", {}, "Schedules"),
+    h("p", { class: "sub" }, "Runs happen only while this app (or motive serve) is running. A run that comes due while the engine is busy or off is skipped, never queued. Secret inputs cannot be scheduled."),
+    workflows.length ? h("div", { class: "card" }, form) : h("p", { class: "empty" }, "Save a workflow first."),
+    h("h2", {}, "Active schedules"),
+    schedules.length ? h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Workflow"), h("th", {}, "Repeats"), h("th", {}, "State"), h("th", {}, "Last firing"), h("th", {}, ""))), h("tbody", {}, rows)) : h("p", { class: "empty" }, "None yet."));
 }

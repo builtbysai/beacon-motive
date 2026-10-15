@@ -5,6 +5,7 @@ import { Engine, type RunEvent } from "./engine.ts";
 import { toErrorInfo } from "./errors.ts";
 import { apiToken, dbPath, tokenFile } from "./paths.ts";
 import { startServer } from "./server.ts";
+import { Scheduler } from "./scheduler.ts";
 import { Store } from "./store.ts";
 import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
@@ -257,10 +258,13 @@ async function main(): Promise<number> {
         return 0;
       case "serve": {
         const token = apiToken();
-        const handle = await startServer(engine, token, Number(values.port ?? 0));
+        const scheduler = new Scheduler(store, engine);
+        scheduler.start();
+        const handle = await startServer(engine, token, Number(values.port ?? 0), undefined, scheduler);
         console.log(`Local API on http://127.0.0.1:${handle.port}/v1 (loopback only).`);
         console.log(`Token: ${tokenFile()}  — send it as "Authorization: Bearer <token>". Ctrl-C stops.`);
         await new Promise<void>((resolve) => process.once("SIGINT", resolve));
+        scheduler.stop();
         engine.stopAll("server stopping");
         await handle.close();
         return 0;

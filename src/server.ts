@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { Engine, type RunEvent } from "./engine.ts";
 import { MotiveError, toErrorInfo } from "./errors.ts";
 import { RecordingManager, RecordSpec } from "./recording.ts";
+import { Scheduler, ScheduleSpec } from "./scheduler.ts";
 import { parseWorkflow } from "./workflow.ts";
 
 const MAX_BODY = 1_000_000;
@@ -18,7 +19,7 @@ export interface ServerHandle {
 }
 
 /** Local API (ADR 0003): loopback only, bearer token, no browser origins, no CORS. */
-export async function startServer(engine: Engine, token: string, port = 0, recordings = new RecordingManager(engine.store)): Promise<ServerHandle> {
+export async function startServer(engine: Engine, token: string, port = 0, recordings = new RecordingManager(engine.store), scheduler = new Scheduler(engine.store, engine)): Promise<ServerHandle> {
   const tokenDigest = digest(token);
   const store = engine.store;
 
@@ -120,6 +121,19 @@ export async function startServer(engine: Engine, token: string, port = 0, recor
           engine.events.on(`run:${id}`, on);
           req.on("close", () => engine.events.off(`run:${id}`, on));
           return;
+        }
+      }
+      if (parts[1] === "schedules") {
+        if (m === "GET" && parts.length === 2) return send(200, { schedules: scheduler.list() });
+        if (m === "POST" && parts.length === 2) {
+          const spec = ScheduleSpec.safeParse(await body());
+          if (!spec.success) throw new MotiveError("invalid_args", `${spec.error.issues[0]?.path.join(".") || "body"}: ${spec.error.issues[0]?.message}`);
+          return send(201, scheduler.add(spec.data));
+        }
+        const id = parts[2];
+        if (id && m === "DELETE" && parts.length === 3) return send(200, { removed: scheduler.remove(id) });
+        if (id && m === "POST" && (parts[3] === "enable" || parts[3] === "disable")) {
+          return scheduler.setEnabled(id, parts[3] === "enable") ? send(200, { ok: true }) : send(404, { error: { code: "not_found", message: "no such schedule" } });
         }
       }
       if (parts[1] === "record") {
