@@ -9,6 +9,8 @@ description = "Windows UI Automation sidecar for beacon-motive (newline-delimite
 uiautomation = { version = "0.25", features = ["event"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Same version uiautomation already pulls in; only extra feature flags, for OCR (ADR 0014).
+windows = { version = "0.62", features = ["Foundation", "Foundation_Collections", "Graphics_Imaging", "Media_Ocr", "Storage_Streams", "Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_Xps", "Win32_System_Threading", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 opt-level = 3

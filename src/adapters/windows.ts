@@ -265,7 +265,29 @@ export function windowsAdapter(): Adapter {
     },
   };
 
-  const ops = [launch, wait, click, setValue, type, keys, select, read, close, tree];
+  // Reads the text drawn in one window with the OCR engine built into Windows (on-device, no download). For content the
+  // accessibility tree does not expose (custom-drawn or canvas UI). Approximate: expect misreads, and treat positions as
+  // hints. Only that window's own pixels are read, and only when its program is named in scopes.apps.
+  const ocr: OpDef = {
+    name: "win.ocr",
+    idempotent: true,
+    args: z
+      .object({ window: WindowSel, rect: z.object({ left: z.number().int(), top: z.number().int(), width: z.number().int().min(1), height: z.number().int().min(1) }).strict().optional() })
+      .strict(),
+    async run(a: { window: object; rect?: object }, ctx) {
+      const c = win();
+      const info = await settle(ctx, () => c.call("window.find", { window: a.window }));
+      const program = String(info.process ?? "").toLowerCase();
+      if (!program || !ctx.scopes.apps.map((x) => x.toLowerCase()).includes(program)) {
+        throw new MotiveError("scope_denied", `${program || "that window's program"} is not in this workflow's scopes.apps, so its pixels are not read`);
+      }
+      const r = await settle(ctx, () => c.call("ocr", { window: a.window, ...(a.rect ? { rect: a.rect } : {}) }));
+      const lines = (r.lines as { text: string; rect?: object }[]).slice(0, 500);
+      return { text: lines.map((l) => l.text).join("\n"), lines, width: r.width as number, height: r.height as number };
+    },
+  };
+
+  const ops = [launch, wait, click, setValue, type, keys, select, read, close, tree, ocr];
   return {
     id: "windows",
     ops,

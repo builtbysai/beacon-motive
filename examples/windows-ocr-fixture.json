@@ -1,0 +1,21 @@
+{
+  "format": "motive.workflow/1",
+  "name": "windows-ocr-fixture",
+  "description": "Opens the native test app and reads the text drawn in its window with the Windows OCR engine (on-device), then closes it. OCR is approximate; the checks use words it reads reliably. Build the app first: npm run build:fixture",
+  "scopes": { "apps": ["MotiveFixture.exe"] },
+  "steps": [
+    { "id": "open", "op": "win.launch", "args": { "command": "./target/fixtures/MotiveFixture.exe", "window": { "name": "Motive Fixture" } }, "timeoutMs": 15000 },
+    {
+      "id": "read",
+      "op": "win.ocr",
+      "args": { "window": { "name": "Motive Fixture" } },
+      "timeoutMs": 15000,
+      "post": [
+        { "contains": { "value": "${out.text}", "text": "Ready" } },
+        { "contains": { "value": "${out.text}", "text": "Blue" } }
+      ]
+    },
+    { "id": "close", "op": "win.close", "args": { "window": { "name": "Motive Fixture" } } }
+  ],
+  "outputs": { "seen": "${steps.read.text}" }
+}

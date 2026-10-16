@@ -1,6 +1,7 @@
 //! Windows UI Automation sidecar. One JSON request per line on stdin, one JSON response per line on stdout.
 //! It never elevates, never injects raw input, and only does what the request names. Everything is semantic:
 //! windows are found by name/class/process, controls by automation id / name / control type.
+mod ocr;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -264,7 +265,16 @@ fn handle(a: &UIAutomation, w: &UITreeWalker, c: &mut Cache, req: &Request) -> R
                     .collect(),
             ))
         }
-        "window.find" => Ok(describe(&cached_window(a, w, c, &p["window"])?)),
+        "window.find" => {
+            let e = cached_window(a, w, c, &p["window"])?;
+            let mut d = describe(&e);
+            d["process"] = json!(ocr::process_name(e.get_process_id().unwrap_or(0) as u32));
+            Ok(d)
+        }
+        "ocr" => {
+            let win = cached_window(a, w, c, &p["window"])?;
+            ocr::run(&win, &p["rect"]).or_else(|m| fail("adapter_failed", m))
+        }
         "window.close" => {
             let win = cached_window(a, w, c, &p["window"])?;
             let pattern = uia(win.get_pattern::<UIWindowPattern>())?;

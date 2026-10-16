@@ -14,7 +14,7 @@ Legend: **Done** = implemented and exercised on a real target in this repository
 | Workflow format v1 + validation | Done | `test/engine.test.ts`; step-level `when` guards and `forEach` loops (max 100 items, no nesting) added, tested with a controllable adapter only, not yet on a real target; subflows (`flow.call`, max depth 3, scopes can only narrow) added the same way; time-based schedules live outside the workflow format (ADR 0011); no event triggers |
 | Engine: cancel, deadline, retry, postcondition polling, concurrency, emergency stop | Done | unit tests with a controllable adapter, plus real runs |
 | Browser adapter (Playwright, installed Chrome) | Partial | open/fill/click/read/wait validated on a local fixture page in Chrome; Edge, Firefox, multiple tabs/frames, downloads, file upload not done |
-| Windows adapter | Partial | Validated on Calculator (UWP) and a purpose-built native WinForms app (`npm run build:fixture`): launch, press/toggle/select/expand, setValue, keyboard typing (`win.type`), list select, combo via value, menus, read text/toggle state, close. Shells/interpreters can never be launched. Password boxes are never read. Not done: trees/grids, element change events, drag, elevated windows (reported unreachable by design), DPI/multi-monitor, combos that only open via a popup window, WPF/Qt/Electron/Java apps (untested). Resolved windows/controls are cached (a window renamed in place would still match until it goes away) |
+| Windows adapter | Partial (plus `win.ocr`, ADR 0014) | Validated on Calculator (UWP) and a purpose-built native WinForms app (`npm run build:fixture`): launch, press/toggle/select/expand, setValue, keyboard typing (`win.type`), list select, combo via value, menus, read text/toggle state, close. Shells/interpreters can never be launched. Password boxes are never read. Not done: trees/grids, element change events, drag, elevated windows (reported unreachable by design), DPI/multi-monitor, combos that only open via a popup window, WPF/Qt/Electron/Java apps (untested). Resolved windows/controls are cached (a window renamed in place would still match until it goes away) |
 | Filesystem adapter | Done (minimal) | read/write inside declared dirs; symlink/junction escape tested |
 | SQLite persistence | Done | `node:sqlite` is experimental in Node 22 |
 | CLI | Done | `capabilities validate save list run history inspect serve audit` |
@@ -49,9 +49,12 @@ Decision still pending on importing OpenAdapt recordings through an isolated Pyt
 
 macOS (AXUIElement; needs a Mac), Linux (AT-SPI; X11 first, Wayland via portals). Nothing is claimed for either.
 
-## Milestone 4 — Adaptive intelligence: not started
+## Milestone 4 — Adaptive intelligence: started (OCR only)
 
-Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervised recovery proposals. The core must keep working with none of these installed.
+| Item | State | Evidence / limit |
+| --- | --- | --- |
+| OCR (`win.ocr`, ADR 0014) | Partial | Windows.Media.Ocr, on-device, one window's own pixels, scoped by program. Read most text of the native test app (misread one word, missed a button caption); Windows only; no clicking by text |
+| Local model provider (Ollama/llama.cpp), visual grounding, supervised recovery | Not started | the core must keep working with none of these installed |
 
 ## Milestone 5 — Integration and polish: started (desktop shell only)
 

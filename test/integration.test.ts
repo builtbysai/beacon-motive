@@ -167,3 +167,28 @@ test("local API: token, host and origin checks; save, run and read back", async 
     await s.close();
   }
 });
+
+test("real native window: win.ocr reads on-screen text with the Windows OCR engine, and refuses a program outside scopes.apps", { skip: !winForms && "needs Windows and: npm run build:fixture" }, async () => {
+  killFixture();
+  const e = new Engine(new Store(":memory:"));
+  try {
+    const r = await e.start(example("windows-ocr-fixture.json")).done;
+    assert.equal(r.status, "succeeded", JSON.stringify(r.error));
+    assert.match(String(r.outputs?.seen), /Ready/);
+
+    // The window is still open (the first workflow closed it, so reopen): a workflow that does not name its program reads nothing.
+    const reopen = parseWorkflow({ format: "motive.workflow/1", name: "t", scopes: { apps: ["MotiveFixture.exe"] }, steps: [{ id: "open", op: "win.launch", args: { command: "./target/fixtures/MotiveFixture.exe", window: { name: "Motive Fixture" } }, timeoutMs: 15000 }] });
+    assert.equal((await e.start(reopen).done).status, "succeeded");
+    const wrong = parseWorkflow({
+      format: "motive.workflow/1",
+      name: "t2",
+      scopes: { apps: ["calc.exe"] },
+      steps: [{ id: "read", op: "win.ocr", args: { window: { name: "Motive Fixture" } }, timeoutMs: 8000 }],
+    });
+    const w = await e.start(wrong).done;
+    assert.equal(w.status, "failed");
+    assert.equal(w.error?.code, "scope_denied");
+  } finally {
+    killFixture();
+  }
+});
