@@ -1,5 +1,7 @@
 # 0006 — Healing is a reviewed proposal, never an automatic repair
 
+Update: Android ops (`android.click/read/wait/setText`) now implement `probe` (one read, exactly one match). There is no Android recorder, so `alternatives` are hand-authored (see `examples/android-heal-demo.json`). Verified on the Android 16 emulator: stale target fails, the alternative that matches nothing is not proposed, `motive heal --apply` fixes the file, the rerun passes.
+
 Status: accepted
 
 When a recorded target stops matching (site redesign, renamed control), a replay that quietly picks "something similar" can click the wrong thing. We never do that.

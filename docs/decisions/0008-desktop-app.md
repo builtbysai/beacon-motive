@@ -15,7 +15,7 @@ Status: accepted (Milestone 5, first representative screen set)
 
 ## Not done
 
-Teach Mode, inspector, permissions screens, workflow editing, scheduling UI, installer/bundling, code signing, auto-update. The engine is started from the repository checkout (`node` on PATH); a packaged build needs a bundled runtime.
+Installer/bundling, code signing, auto-update. (Teach Mode, scheduling, inspector, permissions and editing were added later: ADRs 0010-0012 and the update below.) The engine is started from the repository checkout (`node` on PATH); a packaged build needs a bundled runtime.
 
 ## Verification
 

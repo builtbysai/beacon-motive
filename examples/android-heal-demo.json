@@ -1,0 +1,27 @@
+{
+  "format": "motive.workflow/1",
+  "name": "android-heal-demo",
+  "description": "The Settings row 'Apps' was (pretend) renamed, so the recorded target is stale. The run fails and proposes the alternative that still matches exactly one control; apply it with: motive heal <run-id> --apply apps:0 --file examples/android-heal-demo.json. Read-only on the phone.",
+  "scopes": { "apps": ["com.android.settings"] },
+  "deadlineMs": 60000,
+  "steps": [
+    { "id": "home", "op": "android.key", "args": { "key": "home" } },
+    { "id": "open", "op": "android.launch", "args": { "package": "com.android.settings", "fresh": true }, "timeoutMs": 15000 },
+    {
+      "id": "apps",
+      "op": "android.click",
+      "args": { "target": { "resourceId": "title", "text": "Applications" } },
+      "alternatives": [{ "resourceId": "title", "textContains": "zzz-nothing" }, { "resourceId": "title", "text": "Apps" }],
+      "timeoutMs": 8000
+    },
+    {
+      "id": "defaults",
+      "op": "android.read",
+      "args": { "target": { "resourceId": "title", "text": "Default apps" } },
+      "timeoutMs": 15000,
+      "post": [{ "equals": { "value": "${out.text}", "to": "Default apps" } }]
+    },
+    { "id": "leave", "op": "android.key", "args": { "key": "home" } }
+  ],
+  "outputs": { "reached": "${steps.defaults.text}" }
+}

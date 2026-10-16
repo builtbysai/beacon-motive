@@ -206,6 +206,12 @@ export function androidAdapter(): Adapter {
     return Boolean(next) && next!.bounds.left === n.bounds.left && next!.bounds.top === n.bounds.top && next!.bounds.right === n.bounds.right && next!.bounds.bottom === n.bounds.bottom;
   }
 
+  /** Side-effect-free: does this selector identify exactly one control on screen right now? (One read, no waiting.) */
+  async function matchesOne(sel: Selector, ctx: OpContext): Promise<boolean> {
+    const hits = (await snapshot(ctx)).filter((n) => matches(n, sel));
+    return hits.length === 1 || hits.filter((n) => n.clickable).length === 1;
+  }
+
   /** Re-reads the screen until exactly one node matches, the budget ends, or the selector turns out ambiguous. */
   async function resolve(sel: Selector, ctx: OpContext, needEnabled: boolean): Promise<UiNode> {
     const deadline = Date.now() + ctx.budgetMs;
@@ -269,6 +275,9 @@ export function androidAdapter(): Adapter {
     name: "android.wait",
     idempotent: true,
     args: z.object({ target: Selector }).strict(),
+    async probe(a: { target: Selector }, ctx) {
+      return matchesOne(a.target, ctx);
+    },
     async run(a: { target: Selector }, ctx) {
       const n = await resolve(a.target, ctx, false);
       return { found: true, text: n.password ? "" : n.text };
@@ -279,6 +288,9 @@ export function androidAdapter(): Adapter {
     name: "android.click",
     idempotent: false,
     args: z.object({ target: Selector }).strict(),
+    async probe(a: { target: Selector }, ctx) {
+      return matchesOne(a.target, ctx);
+    },
     async run(a: { target: Selector }, ctx) {
       const n = await resolve(a.target, ctx, true);
       const { x, y } = center(n);
@@ -291,6 +303,9 @@ export function androidAdapter(): Adapter {
     name: "android.read",
     idempotent: true,
     args: z.object({ target: Selector }).strict(),
+    async probe(a: { target: Selector }, ctx) {
+      return matchesOne(a.target, ctx);
+    },
     async run(a: { target: Selector }, ctx) {
       const n = await resolve(a.target, ctx, false);
       if (n.password) throw new MotiveError("permission_denied", "password fields are never read");
@@ -302,6 +317,9 @@ export function androidAdapter(): Adapter {
     name: "android.setText",
     idempotent: true,
     args: z.object({ target: Selector, value: z.string().max(500) }).strict(),
+    async probe(a: { target: Selector }, ctx) {
+      return matchesOne(a.target, ctx);
+    },
     async run(a: { target: Selector; value: string }, ctx) {
       const n = await resolve(a.target, ctx, true);
       const { x, y } = center(n);

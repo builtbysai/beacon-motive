@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { androidAdapter, matches, parseDump } from "../src/adapters/android.ts";
 import { toNodes } from "../src/adapters/android-helper.ts";
 import { Engine } from "../src/engine.ts";
+import { applyProposal, proposalsFor } from "../src/heal.ts";
 import { Store } from "../src/store.ts";
 import { parseWorkflow } from "../src/workflow.ts";
 
@@ -58,4 +59,18 @@ test("real Android phone with the helper: scroll and type non-ASCII text", { ski
   const r = await new Engine(new Store(":memory:")).start(w).done;
   assert.equal(r.status, "succeeded", JSON.stringify(r.error));
   assert.equal(r.outputs?.typed, "Zoë café 日本");
+});
+
+test("real Android device: a stale target fails with a validated proposal, the repair is applied, and the rerun passes", { skip: !optIn && "set MOTIVE_TEST_ANDROID=1 with an unlocked, authorised device (and MOTIVE_ANDROID_SERIAL if several)" }, async () => {
+  const w = parseWorkflow(JSON.parse(readFileSync(new URL("../examples/android-heal-demo.json", import.meta.url), "utf8")));
+  const engine = new Engine(new Store(":memory:"));
+  const failed = await engine.start(w).done;
+  assert.equal(failed.status, "failed");
+  const proposals = proposalsFor(failed);
+  assert.equal(proposals.length, 1);
+  assert.deepEqual(proposals[0]!.targets, [{ resourceId: "title", text: "Apps" }], "the alternative that matches nothing is not proposed");
+  const fixed = applyProposal(w, "apps", 0, proposals);
+  const rerun = await engine.start(fixed).done;
+  assert.equal(rerun.status, "succeeded", JSON.stringify(rerun.error));
+  assert.equal(rerun.outputs?.reached, "Default apps");
 });

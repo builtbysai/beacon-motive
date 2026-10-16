@@ -36,6 +36,10 @@ An **instrumentation APK** (`apps/android-helper`), not an accessibility service
 
 The helper's start-up (~0.5 s) is included in the helper runs. Remaining time is mostly `android.launch` and the settle checks.
 
+## Second device (Android 16 emulator, `Beacon_Phone`, run read-only with no audio)
+
+The helper installed and ran there too (tour, swipe, non-ASCII text all passed). Speed gain is small on the emulator: tour 10.0 s with the helper vs 14.5 s without (software-rendered UI; idle waits and the app itself dominate). Treat the phone figures as the real-hardware result and the emulator as a functional check.
+
 ## Limits and risks
 
 - Debug-signed APK, built locally; no release signing, no Play distribution, no auto-update.
