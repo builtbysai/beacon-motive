@@ -21,6 +21,6 @@ Installer/bundling, code signing, auto-update. (Teach Mode, scheduling, inspecto
 
 Release build run on Windows 11 (WebView2); driven through the WebView2 DevTools port with Playwright (no desktop mouse input): start engine from the UI, browse workflows, run `browser-greet` with a secret, watch it succeed, open history and audit. The typed secret did not appear in the page. Screenshots in `docs/desktop/`. This is a manual check, not part of `npm test`.
 
-## Update: editing (ADR 0013 note)
+## Update: editing
 
 The Workflows screen can edit a stored workflow: description, reorder/remove steps, and edit a step as JSON. Edits are a local copy until Save; the engine validates the whole workflow on `PUT` (invalid edits are refused with its reason; an unknown but well-formed op still saves and is refused at run time by the preflight). Inputs and scopes are deliberately not editable in the app, so the UI cannot widen what a workflow may touch. Delete asks for confirmation. Verified in the built app: an invalid op was refused with the schema message, a valid edit persisted. Not done: adding steps from a palette, a visual selector picker, undo, edit history.

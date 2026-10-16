@@ -6,6 +6,7 @@ import { toErrorInfo } from "./errors.ts";
 import { apiToken, dbPath, tokenFile } from "./paths.ts";
 import { startServer } from "./server.ts";
 import { Scheduler } from "./scheduler.ts";
+import { serveMcp } from "./mcp.ts";
 import { Store } from "./store.ts";
 import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
@@ -40,6 +41,7 @@ const USAGE = `motive <command>
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
   android-helper [status|install|remove]
                                      the optional on-device helper (about 10x faster than uiautomator dump)
+  mcp [--allow a,b]                  MCP server on stdio: AI clients can list/describe workflows and run only the allowed ones
   audit                              recent audit entries
 
 Secret inputs are never taken on the command line: set MOTIVE_SECRET_<NAME>.`;
@@ -77,6 +79,7 @@ async function main(): Promise<number> {
       command: { type: "string" },
       expect: { type: "string" },
       file: { type: "string" },
+      allow: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -233,6 +236,13 @@ async function main(): Promise<number> {
       case "history": {
         if (arg) console.log(JSON.stringify(store.getRun(arg), null, 2));
         else for (const r of store.listRuns(20)) console.log(`${r.id}  ${r.status.padEnd(9)} ${String(r.durationMs ?? "").padStart(6)} ms  ${r.workflow}  ${r.startedAt}`);
+        return 0;
+      }
+      case "mcp": {
+        // stdout carries the protocol; anything human-readable goes to stderr.
+        const allow = (values.allow ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+        console.error(`motive MCP server on stdio. Running is allowed for: ${allow.length ? allow.join(", ") : "no workflows (listing and describing only)"}`);
+        await serveMcp(engine, store, allow);
         return 0;
       }
       case "android-helper": {

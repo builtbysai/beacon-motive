@@ -56,7 +56,7 @@ Secret inputs come only from `MOTIVE_SECRET_<NAME>` or the API body, never from 
 5. **Workflow language**: step-level `when` and `forEach` are done (engine-tested only; try them on a real target); subflows (`flow.call`) done too; time schedules done (ADR 0011, Schedules screen); event triggers not built.
 6. **macOS and Linux adapters** (AXUIElement; AT-SPI, Wayland via portals). Needs those machines; nothing is claimed for either.
 7. **Milestone 4**: optional local model provider (Ollama/llama.cpp), OCR (Tesseract or Windows.Media.Ocr), visual grounding, supervised recovery for unfamiliar situations. Core must keep working with none of it.
-8. **Milestone 5**: installer/prebuilt helper, updates, plugin interface, MCP adapter (optional), Beacon Remote connector (separate token/scopes, no inherited privileges).
+8. **Milestone 5** (MCP server done, ADR 0013): installer/prebuilt helper, updates, plugin interface, MCP adapter (optional), Beacon Remote connector (separate token/scopes, no inherited privileges).
 9. Open decisions: import OpenAdapt recordings through an isolated Python worker (Flow is MIT but Python 3.10-3.12; read its source before deciding; never vendor a checkout, it contains AGPL material); `node:sqlite` is experimental in Node 22; local API has no rate limit.
 10. Not yet measured: CPU use, large UIA trees, helper cold start, other hardware. Benchmarks are single-machine and make no "faster than a person" claim.
 

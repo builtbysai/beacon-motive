@@ -61,7 +61,9 @@ Optional local model provider (Ollama/llama.cpp), OCR, visual grounding, supervi
 
 | Scheduling (`/v1/schedules`, ADR 0011) | Partial | every-N-minutes and daily-at-time triggers; fires only while the engine runs; busy runs are skipped, never queued; secrets never stored. Fake-clock tests plus one real firing from the desktop app. No cron, event triggers, catch-up or launch-at-login |
 
-Not started: installer and prebuilt helper, plugin interface, optional Beacon Remote connector (separate token and scopes), MCP adapter.
+| MCP server (`motive mcp`, ADR 0013) | Partial | stdio server: list/describe/get-run freely, run only `--allow`ed workflows, no secrets through it; tested by driving the real process like a client; not tried with a real MCP client app |
+
+Not started: installer and prebuilt helper, plugin interface, optional Beacon Remote connector (separate token and scopes).
 
 ## Next highest-value work
 
