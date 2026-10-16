@@ -54,7 +54,8 @@ macOS (AXUIElement; needs a Mac), Linux (AT-SPI; X11 first, Wayland via portals)
 | Item | State | Evidence / limit |
 | --- | --- | --- |
 | OCR (`win.ocr`, ADR 0014) | Partial | Windows.Media.Ocr, on-device, one window's own pixels, scoped by program. Read most text of the native test app (misread one word, missed a button caption); Windows only; no clicking by text |
-| Local model provider (Ollama/llama.cpp), visual grounding, supervised recovery | Not started | the core must keep working with none of these installed |
+| Local model provider (Ollama, ADR 0015) and supervised recovery | Partial | opt-in per run, loopback only; suggests a replacement control after a failure, validated by probe, applied only by a person. qwen2.5:1.5b: 6/6 right replacements chosen, but 3/6 false positives when none fits (12 synthetic cases, CPU, ~5 s each); works on the native test app and a browser page; Android path not exercised with the model |
+| Visual grounding, vision models, llama.cpp provider | Not started | the core must keep working with none of these installed |
 
 ## Milestone 5 — Integration and polish: started (desktop shell only)
 

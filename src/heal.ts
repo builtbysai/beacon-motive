@@ -7,14 +7,16 @@ export interface StepProposals {
   op: string;
   problem: string;
   targets: Record<string, unknown>[];
+  /** Where each target came from when it was not a recorded alternative (for example a local model), with its stated reason. */
+  notes: (string | undefined)[];
 }
 
 /** Repairs the engine proposed during a run: alternatives that resolved to exactly one control after the recorded target failed. */
 export function proposalsFor(run: RunRecord): StepProposals[] {
   const out: StepProposals[] = [];
   for (const s of run.steps) {
-    const p = (s.error?.details as { proposals?: { target: Record<string, unknown> }[] } | undefined)?.proposals;
-    if (s.status === "failed" && p?.length) out.push({ stepId: s.stepId, op: s.op, problem: s.error!.message, targets: p.map((x) => x.target) });
+    const p = (s.error?.details as { proposals?: { target: Record<string, unknown>; source?: string; reason?: string }[] } | undefined)?.proposals;
+    if (s.status === "failed" && p?.length) out.push({ stepId: s.stepId, op: s.op, problem: s.error!.message, targets: p.map((x) => x.target), notes: p.map((x) => (x.source ? `suggested by ${x.source}: ${x.reason ?? "no reason given"}` : undefined)) });
   }
   return out;
 }

@@ -5,7 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { MotiveError } from "../errors.ts";
 import { HelperClient, helperInstalled } from "./android-helper.ts";
-import type { Adapter, OpContext, OpDef } from "./types.ts";
+import type { Adapter, Candidate, OpContext, OpDef } from "./types.ts";
 
 // Android through adb and UI Automator. Everything a workflow sees is limited to the packages it declared in
 // scopes.apps: the rest of the dump (notifications, other apps) is dropped before anything else can read it, and the
@@ -398,6 +398,18 @@ export function androidAdapter(): Adapter {
       return { swiped: a.direction };
     },
   };
+
+  /** Controls of the allowed apps on screen, for AI recovery (password text is already empty in a snapshot). */
+  async function androidCandidates(_a: unknown, ctx: OpContext): Promise<Candidate[]> {
+    const out: Candidate[] = [];
+    for (const n of await snapshot(ctx)) {
+      if (!n.text && !n.contentDesc && !n.resourceId) continue;
+      const selector: Record<string, unknown> = n.resourceId && n.text ? { resourceId: n.resourceId.split("/").pop(), text: n.text } : n.text ? { text: n.text } : n.contentDesc ? { contentDesc: n.contentDesc } : { resourceId: n.resourceId.split("/").pop() };
+      out.push({ selector, describe: `${n.className.split(".").pop()} "${n.text || n.contentDesc}"${n.resourceId ? ` (id ${n.resourceId.split("/").pop()})` : ""}${n.clickable ? " clickable" : ""}` });
+    }
+    return out;
+  }
+  for (const o of [wait, click, read, setText]) o.candidates = androidCandidates;
 
   const ops = [launch, wait, click, read, setText, key, tree, swipe];
   return {

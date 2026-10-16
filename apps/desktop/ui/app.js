@@ -116,7 +116,7 @@ async function workflowsView() {
   for (const w of workflows) {
     list.append(h("button", { class: "item", type: "button", "aria-current": String(state.workflow === w.name), onclick: () => { state.workflow = w.name; workflowsView(); } }, w.name, h("small", {}, `saved ${when(w.updatedAt)}`)));
   }
-  main.append(h("h1", {}, "Workflows"), h("p", { class: "sub" }, "Deterministic automations. Running one makes no model calls."), h("div", { class: "split" }, list, detail));
+  main.append(h("h1", {}, "Workflows"), h("p", { class: "sub" }, "Deterministic automations. A run makes no model calls unless you turn on repair help for it."), h("div", { class: "split" }, list, detail));
   if (state.workflow && workflows.some((w) => w.name === state.workflow)) await workflowDetail(detail, state.workflow);
   else if (workflows.length) detail.append(h("div", { class: "empty" }, "Select a workflow."));
 }
@@ -137,6 +137,10 @@ async function workflowDetail(into, name) {
     form.append(h("label", { for: `in-${key}` }, key, def.secret ? " (secret)" : ""), input);
   }
   const runBtn = h("button", { class: "primary", type: "submit" }, "Run workflow");
+  const caps = await api("GET", "/v1/capabilities").catch(() => ({}));
+  const aiOk = Boolean(caps.ai && caps.ai.available);
+  const aiBox = h("input", { id: "run-ai", type: "checkbox", disabled: !aiOk });
+  const aiNote = h("span", { class: "sub" }, aiOk ? `Uses ${caps.ai.model} on this machine only. Nothing is applied automatically.` : `Unavailable: ${caps.ai?.reason ?? "no local model"}`);
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const inputs = {};
@@ -146,7 +150,7 @@ async function workflowDetail(into, name) {
     }
     runBtn.disabled = true;
     try {
-      const { id } = await api("POST", "/v1/runs", { workflow: name, inputs });
+      const { id } = await api("POST", "/v1/runs", { workflow: name, inputs, aiRecovery: aiBox.checked });
       state.runId = id;
       show("run");
     } catch (e) {
@@ -169,6 +173,7 @@ async function workflowDetail(into, name) {
       h("div", { class: "row" }, h("button", { class: "ghost", type: "button", onclick: () => editView(w.name) }, "Edit workflow"), h("button", { class: "ghost", type: "button", onclick: () => deleteWorkflow(w.name) }, "Delete workflow")),
     ),
   );
+  form.append(h("label", { for: "run-ai" }, "Repair help"), h("div", {}, h("label", {}, aiBox, " If a control cannot be found, ask the local model to suggest a repair"), h("div", {}, aiNote)));
   form.append(h("span", {}), h("div", { class: "row tight" }, runBtn));
 }
 
@@ -189,7 +194,8 @@ async function runView(id) {
       h("span", { class: `st ${s.status}`, "aria-label": s.status }, s.status === "succeeded" ? "✓" : s.status === "skipped" ? "–" : "✗"),
       h("span", {}, s.stepId, " ", h("span", { class: "mono" }, s.op)),
       h("span", { class: "mono" }, ms(s.durationMs)),
-      s.error ? h("div", { class: "err" }, `${s.error.code}: ${s.error.message}`) : null));
+      s.error ? h("div", { class: "err" }, `${s.error.code}: ${s.error.message}`) : null,
+      ...repairs(r, s)));
     const cancel = r.status === "running" ? h("button", { class: "ghost", type: "button", onclick: async () => { await api("POST", `/v1/runs/${encodeURIComponent(id)}/cancel`); paint(); } }, "Cancel run") : null;
     const outputs = r.outputs && Object.keys(r.outputs).length ? h("pre", { class: "mono card" }, JSON.stringify(r.outputs, null, 2)) : null;
     fill(main,
@@ -487,4 +493,23 @@ async function inspectorView() {
     }
   }
   loadWindows();
+}
+
+// Repair proposals recorded by the engine when a target stopped matching. Each is checked to resolve to exactly one
+// control; applying one is always an explicit click here (it edits the stored workflow, keeping the old target as an alternative).
+function repairs(run, step) {
+  const props = step.error && step.error.details && step.error.details.proposals;
+  if (!props || !props.length) return [];
+  return props.map((p, i) => h("div", { class: "repair" },
+    h("div", {}, h("strong", {}, "Suggested repair"), p.source ? ` (from ${p.source})` : " (a recorded alternative)", ": ", h("span", { class: "mono" }, JSON.stringify(p.target))),
+    p.reason ? h("div", { class: "sub" }, p.reason) : null,
+    h("button", { class: "ghost", type: "button", onclick: async () => {
+      if (!confirm("Update the stored workflow to use this target? The old target is kept as an alternative.")) return;
+      try {
+        await api("POST", `/v1/runs/${encodeURIComponent(run.id)}/heal`, { step: step.stepId, index: i });
+        alert("Workflow updated. Run it again to check.");
+      } catch (e) {
+        alert(String(e));
+      }
+    } }, "Apply this repair")));
 }

@@ -1,4 +1,6 @@
 import { EventEmitter } from "node:events";
+import type { ModelProvider } from "./ai/provider.ts";
+import { suggestTarget } from "./ai/recovery.ts";
 import { z } from "zod";
 import type { Adapter, Capability, OpDef } from "./adapters/types.ts";
 import { browserAdapter } from "./adapters/browser.ts";
@@ -37,6 +39,8 @@ interface SeqCtx {
   record: RunRecord;
   signal: AbortSignal;
   redact: Redactor;
+  /** Set only when the caller asked for AI recovery for this run. */
+  ai?: ModelProvider;
   prefix: string;
   depth: number;
   chain: string[];
@@ -88,7 +92,7 @@ export class Engine {
     return runs.length;
   }
 
-  start(workflow: Workflow, rawInputs: Record<string, unknown> = {}, opts: { actor?: string } = {}): ActiveRun {
+  start(workflow: Workflow, rawInputs: Record<string, unknown> = {}, opts: { actor?: string; ai?: ModelProvider } = {}): ActiveRun {
     const actor = opts.actor ?? "cli";
     if (this.active.size >= this.maxConcurrentRuns) {
       throw new MotiveError("precondition_failed", `${this.active.size} run(s) already active (limit ${this.maxConcurrentRuns})`, { retryable: true });
@@ -109,7 +113,7 @@ export class Engine {
       done: undefined as unknown as Promise<RunRecord>,
     };
     this.active.set(record.id, run);
-    run.done = this.execute(workflow, inputs, redact, record, adapters, controller).finally(() => this.active.delete(record.id));
+    run.done = this.execute(workflow, inputs, redact, record, adapters, controller, opts.ai).finally(() => this.active.delete(record.id));
     return run;
   }
 
@@ -118,7 +122,7 @@ export class Engine {
     this.events.emit(`run:${e.runId}`, e);
   }
 
-  private async execute(w: Workflow, inputs: Record<string, unknown>, redact: Redactor, record: RunRecord, adapters: Adapter[], controller: AbortController): Promise<RunRecord> {
+  private async execute(w: Workflow, inputs: Record<string, unknown>, redact: Redactor, record: RunRecord, adapters: Adapter[], controller: AbortController, ai?: ModelProvider): Promise<RunRecord> {
     const t0 = performance.now();
     const signal = controller.signal;
     const ops = new Map<string, { op: OpDef; adapter: Adapter }>();
@@ -134,7 +138,7 @@ export class Engine {
     try {
       // Fail before any side effect if the workflow (or a subflow it names) cannot run here at all.
       this.preflight(w, ops, new Set([w.name]), 0);
-      const ctx: SeqCtx = { ops, record, signal, redact, prefix: "", depth: 0, chain: [w.name] };
+      const ctx: SeqCtx = { ops, record, signal, redact, ...(ai ? { ai } : {}), prefix: "", depth: 0, chain: [w.name] };
       failure = await this.runSequence(w, w.steps, scope, ctx);
 
       if (!failure) {
@@ -194,7 +198,7 @@ export class Engine {
       this.emit({ type: "step.end", runId: record.id, step: sr });
     };
     const one = (st: Step, sc: Scope): Promise<StepRecord> =>
-      st.op === CALL_OP ? this.runCall(w, st, sc, ctx) : this.runStep(w, st, 0, ctx.ops.get(st.op)!.op, sc, signal, ctx.redact);
+      st.op === CALL_OP ? this.runCall(w, st, sc, ctx) : this.runStep(w, st, 0, ctx.ops.get(st.op)!.op, sc, signal, ctx.redact, ctx.ai);
 
     for (const step of steps) {
       if (signal.aborted) throw abortReason(signal);
@@ -265,7 +269,7 @@ export class Engine {
     }
   }
 
-  private async runStep(w: Workflow, step: Step, index: number, op: OpDef, scope: Scope, signal: AbortSignal, redact: Redactor): Promise<StepRecord> {
+  private async runStep(w: Workflow, step: Step, index: number, op: OpDef, scope: Scope, signal: AbortSignal, redact: Redactor, ai?: ModelProvider): Promise<StepRecord> {
     const t0 = performance.now();
     let attempts = 0;
     const base = { index, stepId: step.id, op: step.op };
@@ -300,7 +304,7 @@ export class Engine {
       return { ...base, status: "succeeded", durationMs: Math.round(performance.now() - t0), attempts, output: redact.value(output) };
     } catch (e) {
       let info = toErrorInfo(signal.aborted ? abortReason(signal) : e);
-      if (!signal.aborted && parsedArgs) info = await this.withProposals(info, op, step, parsedArgs, w, signal);
+      if (!signal.aborted && parsedArgs) info = await this.withProposals(info, op, step, parsedArgs, w, signal, ai);
       scope.steps[step.id] = { error: info.message };
       return { ...base, status: "failed", durationMs: Math.round(performance.now() - t0), attempts, error: redact.value(info) };
     }
@@ -310,15 +314,32 @@ export class Engine {
    * When a recorded target no longer resolves, tests the alternatives captured at record time and attaches those that
    * resolve to exactly one control as proposals. Nothing is changed or retried: the run still fails and the user decides.
    */
-  private async withProposals(info: ErrorInfo, op: OpDef, step: Step, args: Record<string, unknown>, w: Workflow, signal: AbortSignal): Promise<ErrorInfo> {
-    if (!["not_found", "ambiguous", "timeout"].includes(info.code) || !step.alternatives?.length || !op.probe || !("target" in args)) return info;
-    const proposals: { target: unknown }[] = [];
-    for (const alt of step.alternatives) {
+  private async withProposals(info: ErrorInfo, op: OpDef, step: Step, args: Record<string, unknown>, w: Workflow, signal: AbortSignal, ai?: ModelProvider): Promise<ErrorInfo> {
+    if (!["not_found", "ambiguous", "timeout"].includes(info.code) || !op.probe || !("target" in args)) return info;
+    const proposals: { target: unknown; source?: string; reason?: string }[] = [];
+    for (const alt of step.alternatives ?? []) {
       if (signal.aborted) break;
       const candidate = op.args.safeParse({ ...args, target: alt });
       if (!candidate.success) continue;
       const ok = await op.probe(candidate.data, { signal, budgetMs: 1500, scopes: w.scopes }).catch(() => false);
       if (ok) proposals.push({ target: alt });
+    }
+    // No recorded alternative works: if this run opted in, ask the local model to choose among the controls really on
+    // screen. Its choice is only a proposal, and only if it resolves to exactly one control.
+    if (!proposals.length && ai && op.candidates && !signal.aborted) {
+      try {
+        const ctx = { signal, budgetMs: 3000, scopes: w.scopes };
+        const candidates = await op.candidates(args, ctx);
+        const pick = await suggestTarget(ai, { stepId: step.id, op: step.op, ...(w.description ? { description: w.description } : {}), original: args.target, candidates }, signal);
+        if (pick) {
+          const candidate = op.args.safeParse({ ...args, target: pick.candidate.selector });
+          if (candidate.success && (await op.probe(candidate.data, ctx).catch(() => false))) {
+            proposals.push({ target: pick.candidate.selector, source: `local model ${ai.model}`, reason: pick.reason });
+          }
+        }
+      } catch {
+        // the model or the screen read failed: no suggestion, the run fails as it would without AI
+      }
     }
     return proposals.length ? { ...info, details: { ...info.details, proposals } } : info;
   }

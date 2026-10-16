@@ -4,6 +4,8 @@ import type { AddressInfo } from "node:net";
 import { Engine, type RunEvent } from "./engine.ts";
 import { MotiveError, toErrorInfo } from "./errors.ts";
 import { RecordingManager, RecordSpec } from "./recording.ts";
+import { ollamaConfig, ollamaProvider, type ModelProvider } from "./ai/provider.ts";
+import { applyProposal, proposalsFor } from "./heal.ts";
 import { inspectTree, inspectWindows } from "./inspect.ts";
 import { Scheduler, ScheduleSpec } from "./scheduler.ts";
 import { parseWorkflow } from "./workflow.ts";
@@ -66,7 +68,11 @@ export async function startServer(engine: Engine, token: string, port = 0, recor
         }
       };
 
-      if (m === "GET" && parts[1] === "capabilities") return send(200, { version: 1, adapters: await engine.capabilities() });
+      if (m === "GET" && parts[1] === "capabilities") {
+        const cfg = ollamaConfig();
+        const why = await ollamaProvider().unavailableReason();
+        return send(200, { version: 1, adapters: await engine.capabilities(), ai: { provider: "ollama", model: cfg.model, available: !why, ...(why ? { reason: why } : {}), localOnly: true } });
+      }
       if (parts[1] === "workflows") {
         if (m === "GET" && parts.length === 2) return send(200, { workflows: store.listWorkflows() });
         const name = parts[2];
@@ -91,7 +97,15 @@ export async function startServer(engine: Engine, token: string, port = 0, recor
           const b = await body();
           const w = typeof b.workflow === "string" ? store.getWorkflow(b.workflow) : undefined;
           if (!w) throw new MotiveError("not_found", "no such workflow");
-          const run = engine.start(w, b.inputs ?? {}, { actor: "api" });
+          let ai: ModelProvider | undefined;
+          if (b.aiRecovery === true) {
+            const provider = ollamaProvider();
+            const why = await provider.unavailableReason();
+            if (why) throw new MotiveError("invalid_args", `AI recovery is unavailable: ${why}`);
+            ai = provider;
+            store.audit("api", "run.ai_recovery", { workflow: w.name, model: provider.model });
+          }
+          const run = engine.start(w, b.inputs ?? {}, { actor: "api", ...(ai ? { ai } : {}) });
           return send(202, { id: run.id });
         }
         if (m === "GET" && parts.length === 2) return send(200, { runs: store.listRuns() });
@@ -99,6 +113,16 @@ export async function startServer(engine: Engine, token: string, port = 0, recor
         if (id && m === "GET" && parts.length === 3) {
           const r = store.getRun(id);
           return r ? send(200, r) : send(404, { error: { code: "not_found", message: "no such run" } });
+        }
+        if (id && m === "POST" && parts[3] === "heal") {
+          const { step, index } = await body();
+          const r = store.getRun(id);
+          const w = r && store.getWorkflow(r.workflow);
+          if (!r || !w) throw new MotiveError("not_found", "no such run or its workflow is no longer in the library");
+          const fixed = applyProposal(w, String(step), Number(index ?? 0), proposalsFor(r));
+          store.saveWorkflow(fixed);
+          store.audit("api", "workflow.heal", { run: id, step, index });
+          return send(200, { saved: fixed.name });
         }
         if (id && m === "POST" && parts[3] === "cancel") {
           const active = engine.activeRuns().includes(id);

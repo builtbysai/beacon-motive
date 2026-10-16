@@ -5,9 +5,17 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { MotiveError, type ErrorCode } from "../errors.ts";
-import type { Adapter, OpContext, OpDef } from "./types.ts";
+import type { Adapter, Candidate, OpContext, OpDef } from "./types.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+interface TreeNode {
+  name: string;
+  automationId: string;
+  controlType: string;
+  offscreen?: boolean;
+  children?: TreeNode[];
+}
 
 export function sidecarPath(): string | undefined {
   const candidates = [process.env.MOTIVE_WIN_UIA, path.resolve(here, "../../crates/win-uia/target/release/motive-win-uia.exe")];
@@ -286,6 +294,23 @@ export function windowsAdapter(): Adapter {
       return { text: lines.map((l) => l.text).join("\n"), lines, width: r.width as number, height: r.height as number };
     },
   };
+
+  /** Controls of the window that has the recorded target, for AI recovery: names and ids only, never values. */
+  async function winCandidates(a: { window: object }, ctx: OpContext): Promise<Candidate[]> {
+    const c = win();
+    const root = (await settle(ctx, () => c.call("tree", { window: a.window, depth: 8 }))) as TreeNode;
+    const out: Candidate[] = [];
+    const walk = (n: TreeNode, top: boolean) => {
+      if (!top && !n.offscreen && (n.name || n.automationId)) {
+        const selector = n.automationId ? { automationId: n.automationId } : { name: n.name, controlType: n.controlType };
+        out.push({ selector, describe: `${n.controlType} "${n.name}"${n.automationId ? ` (automationId ${n.automationId})` : ""}` });
+      }
+      for (const k of n.children ?? []) walk(k, false);
+    };
+    walk(root, true);
+    return out;
+  }
+  for (const o of [wait, click, setValue, type, select, read]) o.candidates = winCandidates;
 
   const ops = [launch, wait, click, setValue, type, keys, select, read, close, tree, ocr];
   return {

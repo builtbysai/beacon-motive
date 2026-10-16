@@ -5,7 +5,7 @@ import { chromium, type Browser, type BrowserContext, type Locator, type Page } 
 import { z } from "zod";
 import { MotiveError } from "../errors.ts";
 import { checkDir } from "./fs.ts";
-import type { Adapter, OpContext, OpDef } from "./types.ts";
+import type { Adapter, Candidate, OpContext, OpDef } from "./types.ts";
 
 export const Target = z
   .object({
@@ -93,6 +93,38 @@ export function browserAdapter(): Adapter {
     }
   };
 
+  /** Interactive elements of the current page, for AI recovery: role and accessible name only, never typed values. */
+  const pageCandidates = async (): Promise<Candidate[]> => {
+    if (!page) return [];
+    const found = await page.evaluate(() => {
+      const implicit = (el: Element): string => {
+        const role = el.getAttribute("role");
+        if (role) return role;
+        const tag = el.tagName.toLowerCase();
+        if (tag === "a") return "link";
+        if (tag === "button") return "button";
+        if (tag === "select") return "combobox";
+        if (tag === "textarea") return "textbox";
+        if (tag === "input") {
+          const t = (el as HTMLInputElement).type;
+          return ["button", "submit", "reset"].includes(t) ? "button" : t === "checkbox" ? "checkbox" : t === "radio" ? "radio" : "textbox";
+        }
+        return "";
+      };
+      const out: { role: string; name: string; label: string }[] = [];
+      for (const el of Array.from(document.querySelectorAll("a, button, input, select, textarea, [role]"))) {
+        const style = getComputedStyle(el);
+        if (style.visibility === "hidden" || style.display === "none") continue;
+        const input = el as HTMLInputElement;
+        if (input.type === "password") continue;
+        const labels = Array.from(input.labels ?? []).map((l) => (l.textContent ?? "").trim());
+        const name = (el.getAttribute("aria-label") ?? (labels[0] || (el.textContent ?? "").trim() || input.placeholder || (["button", "submit"].includes(input.type) ? input.value : "") || "")).replace(/\s+/g, " ").slice(0, 80);
+        if (name && implicit(el)) out.push({ role: implicit(el), name, label: labels[0] ?? "" });
+      }
+      return out.slice(0, 80);
+    });
+    return found.map((f) => ({ selector: f.label ? { label: f.label } : { role: f.role, name: f.name }, describe: `${f.role} "${f.name}"` }));
+  };
   const open: OpDef = {
     name: "browser.open",
     idempotent: false,
@@ -195,6 +227,8 @@ export function browserAdapter(): Adapter {
         return { state: a.state };
       }),
   };
+
+  for (const o of [click, fill, read, wait]) o.candidates = pageCandidates;
 
   return {
     id: "browser",

@@ -7,6 +7,7 @@ import { apiToken, dbPath, tokenFile } from "./paths.ts";
 import { startServer } from "./server.ts";
 import { Scheduler } from "./scheduler.ts";
 import { serveMcp } from "./mcp.ts";
+import { ollamaConfig, ollamaProvider, type ModelProvider } from "./ai/provider.ts";
 import { Store } from "./store.ts";
 import { sidecarPath, WinClient } from "./adapters/windows.ts";
 import { parseWorkflow, type Workflow } from "./workflow.ts";
@@ -41,6 +42,8 @@ const USAGE = `motive <command>
   serve [--port n]                   local API on 127.0.0.1 (token in ${tokenFile()})
   android-helper [status|install|remove]
                                      the optional on-device helper (about 10x faster than uiautomator dump)
+  ai status                          is the optional local model (Ollama) reachable here
+  run ... --ai                       if a recorded target stops matching, ask the local model to suggest a repair (reviewed, never applied)
   mcp [--allow a,b]                  MCP server on stdio: AI clients can list/describe workflows and run only the allowed ones
   audit                              recent audit entries
 
@@ -80,6 +83,7 @@ async function main(): Promise<number> {
       expect: { type: "string" },
       file: { type: "string" },
       allow: { type: "string" },
+      ai: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
@@ -147,7 +151,17 @@ async function main(): Promise<number> {
           if (w.inputs[key]?.secret) throw new Error(`input ${key} is secret; set MOTIVE_SECRET_${key.toUpperCase()} instead of passing it on the command line`);
           inputs[key] = kv.slice(i + 1);
         }
-        const run = engine.start(w, inputs, { actor: "cli" });
+        let ai: ModelProvider | undefined;
+        if (values.ai) {
+          const provider = ollamaProvider();
+          const why = await provider.unavailableReason();
+          if (why) console.error(`(AI recovery unavailable: ${why}; running without it)`);
+          else {
+            ai = provider;
+            store.audit("cli", "run.ai_recovery", { workflow: w.name, model: provider.model });
+          }
+        }
+        const run = engine.start(w, inputs, { actor: "cli", ...(ai ? { ai } : {}) });
         if (!values.json) {
           console.log(`run ${run.id} ${w.name}`);
           engine.events.on(`run:${run.id}`, (e: RunEvent) => {
@@ -218,7 +232,7 @@ async function main(): Promise<number> {
           if (!props.length) console.log("No repairs were proposed for this run.");
           for (const p of props) {
             console.log(`${p.stepId} (${p.op}): ${p.problem}`);
-            p.targets.forEach((t, i) => console.log(`  [${i}] ${JSON.stringify(t)}`));
+            p.targets.forEach((t, i) => console.log(`  [${i}] ${JSON.stringify(t)}${p.notes[i] ? `   (${p.notes[i]}; review before applying)` : ""}`));
           }
           if (props.length) console.log("Apply one with: motive heal <run-id> --apply <step>:<n> [--file workflow.json]");
           return 0;
@@ -237,6 +251,12 @@ async function main(): Promise<number> {
         if (arg) console.log(JSON.stringify(store.getRun(arg), null, 2));
         else for (const r of store.listRuns(20)) console.log(`${r.id}  ${r.status.padEnd(9)} ${String(r.durationMs ?? "").padStart(6)} ms  ${r.workflow}  ${r.startedAt}`);
         return 0;
+      }
+      case "ai": {
+        const { base, model } = ollamaConfig();
+        const why = await ollamaProvider().unavailableReason();
+        console.log(why ? `local model: unavailable (${why})` : `local model: ${model} ready on ${base.host} (loopback only)`);
+        return why ? 1 : 0;
       }
       case "mcp": {
         // stdout carries the protocol; anything human-readable goes to stderr.
