@@ -14,7 +14,16 @@ Change since the first measurement: the Windows helper now caches resolved windo
 
 Engine process peak RSS about 115–137 MB (excludes Chrome and Calculator). One Windows 11 PC, Node 22.22, Chrome stable, Calculator 11.2607; no manual-speed comparison, so no claim about beating a person. Reproduce: `node --disable-warning=ExperimentalWarning scripts/bench.ts 10`.
 
-Not measured yet: CPU use, large trees, cold start of the helper, other hardware.
+Previously unmeasured items are in the next section. Still not measured: other hardware, trees larger than a few dozen nodes.
+
+## Helper cost (scripts/bench-extra.ts, one run on the same PC)
+
+- Windows helper cold start (spawn to first reply), 10 runs: median 30 ms, max 37 ms.
+- Idle helper over 10 s: 0 ms CPU, working set 9.9 MB.
+- Tree read of the desktop app's window (a WebView2 window): 11 nodes at depth 3, 16 at depth 6, 22 at depth 10, median 57, 65 and 74 ms. This is a small tree; read time for large trees (an Office or IDE window with thousands of controls) is not measured, so nothing is claimed about it.
+- Engine process CPU over 10 `browser-greet` runs: about 1.9 s CPU in 10.6 s wall (roughly 190 ms of Node CPU per run; Chrome's own CPU is not included).
+- OCR (`win.ocr`): about 150 ms for a 624x599 window, one measurement.
+- Android with the on-device helper: see ADR 0009 (screen read 15-35 ms on the phone; tour 4.6 s versus 10.7 s without it).
 
 ## Native Windows Forms app (`windows-form-fixture`, 14 steps)
 
