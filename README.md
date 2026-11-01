@@ -1,3 +1,5 @@
+> Windows workspace: start with [the current workspace handoff](docs/workspace-handoff.md) for private-secret paths, setup and validation.
+
 # beacon-motive
 
 A local-first, AI-optional automation engine. A workflow is one JSON file that can mix browser, Windows-desktop and filesystem steps. It runs deterministically through semantic selectors (accessibility tree, DOM roles and labels), checks the state it expects, and makes no model calls. Independent of Beacon Remote and Beacon View; it only exposes a local API they could use later.

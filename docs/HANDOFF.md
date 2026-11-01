@@ -1,5 +1,7 @@
 # Handoff: beacon-motive
 
+> Windows workspace update: read [workspace-handoff.md](workspace-handoff.md) first for current paths, private state and validation. Older C: examples and recorded permissions below are historical.
+
 Read this first, then `docs/roadmap.md` (the source of truth for what is done), then the ADRs in `docs/decisions/` as needed. Last updated at commit after `038ee54`.
 
 ## What this is
