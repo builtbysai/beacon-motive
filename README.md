@@ -1,10 +1,10 @@
-> Windows workspace: start with [the current workspace handoff](docs/workspace-handoff.md) for private-secret paths, setup and validation.
-
 # beacon-motive
+
+Start development with [docs/workspace.md](docs/workspace.md). See [docs/roadmap.md](docs/roadmap.md) for scope and [docs/development-status.md](docs/development-status.md) for validation and remaining gates.
 
 A local-first, AI-optional automation engine. A workflow is one JSON file that can mix browser, Windows-desktop and filesystem steps. It runs deterministically through semantic selectors (accessibility tree, DOM roles and labels), checks the state it expects, and makes no model calls. Independent of Beacon Remote and Beacon View; it only exposes a local API they could use later.
 
-**Status: Milestone 1 (foundation) done for Windows and Chrome; Milestone 2 (Teach Mode) working for the browser and Windows apps; Android adapter started.** Everything is validated on one Windows PC and one Pixel 7a. macOS and Linux are not implemented. A new contributor or chat should start with [`docs/HANDOFF.md`](docs/HANDOFF.md). See [`docs/roadmap.md`](docs/roadmap.md) for exactly what is and is not done.
+**Status: Milestone 1 (foundation) done for Windows and Chrome; Milestone 2 (Teach Mode) working for the browser and Windows apps; Android adapter started.** Everything is validated on one Windows PC and one Pixel 7a. macOS and Linux are not implemented. A new contributor or chat should start with [`docs/workspace.md`](docs/workspace.md). See [`docs/roadmap.md`](docs/roadmap.md) for exactly what is and is not done.
 
 ## Try it (Windows, Node >= 22.13, Rust, Chrome or Edge)
 

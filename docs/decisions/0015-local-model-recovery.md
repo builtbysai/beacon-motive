@@ -16,7 +16,7 @@ Adapters supply candidates through an optional `candidates()` on their ops: Wind
 
 ## Setup used here (not part of the repo)
 
-Portable Ollama v0.40.5 zip (1,403 MB, sha256 verified against GitHub's digest) extracted to `C:\Dev\ollama-portable\app`, `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_MODELS=C:\Dev\ollama-portable\models`, `ollama pull qwen2.5:1.5b` (986 MB, Apache 2.0). No installer, nothing registered for startup. Ollama and the model are separate tools the user chooses to run, not dependencies of this repo.
+Portable Ollama v0.40.5 zip (1,403 MB, sha256 verified against GitHub's digest) extracted to `D:/Dev/_tools/ollama/app`, `OLLAMA_HOST=127.0.0.1:11434`, `OLLAMA_MODELS=D:/Dev/_tools/ollama/models`, `ollama pull qwen2.5:1.5b` (986 MB, Apache 2.0). No installer, nothing registered for startup. Ollama and the model are separate tools the user chooses to run, not dependencies of this repo.
 
 ## Measured quality (one machine, CPU only, `scripts/ai-eval.ts`)
 

@@ -8,4 +8,4 @@ Back up unique local data in an encrypted snapshot on another physical disk befo
 
 View and Remote use pnpm hoisted copied dependencies and injected workspace packages with deduplication-to-links disabled; build/typecheck/test/dev workflows synchronize those copies. This uses more disk than pnpm's linked layout, avoiding external directory dependencies. Motive keeps its existing npm lockfiles. No production architecture, runtime authority or feature milestone changes are implied.
 
-See ../workspace-handoff.md for current paths, commands and remaining acceptance gates.
+See ../workspace.md for current paths, commands and remaining acceptance gates.

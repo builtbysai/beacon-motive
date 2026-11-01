@@ -1,4 +1,6 @@
-# Portable workspace validation — November 1, 2026
+# Development status
+
+Last verified: November 1, 2026. Re-run the relevant checks after future changes.
 
 ## Dependency audit limits
 
@@ -12,4 +14,4 @@ The native Windows helper built with `cargo build --release --locked --manifest-
 
 The dot-sourced shell setup selects the existing real private Motive token/database/fixture directory through MOTIVE_HOME; it does not create replacement identities or print token values. No active source/dependency reparse points were found. New PowerShell scripts parse. Gitleaks staged-candidate scanning and final diff review precede publication. Independent encrypted snapshots preserve ignored data; the source-only Git push does not cover it.
 
-Existing application/runtime identities and server secrets remain in their required locations by owner choice. DPAPI recovery is still Windows-user/machine dependent. Read workspace-handoff.md before using older C-path examples or recorded permissions in HANDOFF.md. No existing test was added or removed for this documentation/path-only change.
+Existing application/runtime identities and server secrets remain in their required locations by owner choice. DPAPI recovery is still Windows-user/machine dependent. Read workspace.md for current setup instead of older C-path examples. No existing test was added or removed for this documentation/path-only change.
