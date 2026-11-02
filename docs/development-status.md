@@ -1,6 +1,12 @@
 # Development status
 
-Last verified: November 1, 2026. Re-run the relevant checks after future changes.
+Latest development validation: November 2, 2026. Earlier implementation/build records below are from November 1; re-run relevant checks after later changes.
+
+## Deterministic CI follow-up
+
+Added a read-only, SHA-pinned GitHub Actions workflow for Windows/Ubuntu, locked JavaScript installs, strict TypeScript, an explicit non-UI test command and root/desktop JavaScript audit gates. The API boundary regression now lives outside application-driving integration tests and fails if workflow polling never completes. Existing Android parser/package-isolation regressions now run independently of device opt-ins. These are moved existing tests, not duplicated or replaced hardware acceptance.
+
+Local typechecking, the deterministic suite, the extracted API/Android parser checks and both JavaScript audits passed. No application-driving full suite, phone, audio, live model or service/reboot acceptance was run. Hosted workflow results are pending initial publication; source changes do not establish a hosted pass.
 
 ## Dependency audit limits
 

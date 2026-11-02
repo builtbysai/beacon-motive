@@ -8,6 +8,8 @@ Read `roadmap.md`, README and applicable security ADRs for implemented/experimen
 
 Dot-sourcing the shell setup sets `MOTIVE_HOME` to the private root's `motive/local` directory. This holds the preserved `api-token`, SQLite database and private recordings/fixtures as real files, not a link. Never publish workflow secret values, private UI dumps, notifications or token-bearing state. The API remains authenticated loopback-only. An ordinary install without an override retains its OS user-data default.
 
+`npm run test:ci` selects the deterministic engine, API-security, AI-proposal, recording-service, scheduler, Android parser isolation and stdio-MCP regressions explicitly. It uses synthetic adapters, in-memory databases and an isolated MCP profile; it does not launch UI workflows. See [testing.md](testing.md) for the CI boundary.
+
 `npm test` can launch Windows/browser fixtures and interact with apps. Tests run serially; inspect fixtures first and keep unrelated windows safe. Phone tests and live Ollama evaluation are opt-in. No audio tests should be run. Focused engine, policy/redaction, scheduler, MCP and Android parser tests can validate deterministic boundaries without phone input; hardware/desktop support requires separate actual acceptance. Do not cite test counts as correctness evidence.
 
 Optional portable Ollama lives in `D:/Dev/_tools/ollama`, with its models subdirectory. It must bind loopback. Do not start it or download models just for routine typechecking. Set OLLAMA_HOST/OLLAMA_MODELS deliberately from the actual current path rather than old C-path examples. Motive does not inherit Remote or View permissions and has no verified Oracle deployment.
