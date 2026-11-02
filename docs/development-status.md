@@ -6,7 +6,7 @@ Latest development validation: November 2, 2026. Earlier implementation/build re
 
 Added a read-only, SHA-pinned GitHub Actions workflow for Windows/Ubuntu, locked JavaScript installs, strict TypeScript, an explicit non-UI test command and root/desktop JavaScript audit gates. The API boundary regression now lives outside application-driving integration tests and fails if workflow polling never completes. Existing Android parser/package-isolation regressions now run independently of device opt-ins. These are moved existing tests, not duplicated or replaced hardware acceptance.
 
-Local typechecking, the deterministic suite, the extracted API/Android parser checks and both JavaScript audits passed. No application-driving full suite, phone, audio, live model or service/reboot acceptance was run. Hosted workflow results are pending initial publication; source changes do not establish a hosted pass.
+Local typechecking, the deterministic suite, the extracted API/Android parser checks and both JavaScript audits passed. No application-driving full suite, phone, audio, live model or service/reboot acceptance was run. Hosted deterministic checks passed on both Windows 2025 and Ubuntu 24.04 in [run 41455547820](https://github.com/builtbysai/beacon-motive/actions/runs/41455547820) at `61f5f18`. The initial workflow attempt failed before jobs started because runner context was used at job-env scope; the corrected step-scoped profile passed. These checks do not include native desktop/platform acceptance.
 
 ## Dependency audit limits
 

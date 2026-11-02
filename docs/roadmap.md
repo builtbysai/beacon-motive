@@ -21,7 +21,7 @@ The most useful next milestone is **human-operated Teach and Replay acceptance**
 ## GitHub checkpoint — November 2, 2026
 
 - No issues, PRs, Actions runs, GitHub Releases or milestones were listed. The two remote branches are main and codex/portable-workspace; there is no open integration PR for the four maintenance commits.
-- This review initially found no CI workflow. The November 2 follow-up adds a deterministic Windows/Linux CI workflow and an explicit `npm run test:ci` command; hosted validation is recorded below when complete. It does not certify desktop adapters or hardware acceptance.
+- This review initially found no CI workflow. The November 2 follow-up adds a deterministic Windows/Linux CI workflow and an explicit `npm run test:ci` command; [hosted validation passed on Windows/Ubuntu](https://github.com/builtbysai/beacon-motive/actions/runs/41455547820). It does not certify desktop adapters or hardware acceptance.
 - The November 1 root/desktop npm and Windows-helper audit results are recorded in [development-status.md](development-status.md). The desktop all-target Rust strict warning gate remains failed on unmaintained proc-macro-error and GLib VariantStrIter unsoundness. The inspected Windows target trees exclude those packages; this does not establish Linux safety. Update the upstream-compatible chain and validate the affected platform rather than suppressing warnings.
 - GitHub's Dependabot-alert API was unavailable for this repository; this review does not claim zero provider alerts or a fresh dependency audit.
 
@@ -35,7 +35,7 @@ The most useful next milestone is **human-operated Teach and Replay acceptance**
 
 The new GitHub Actions workflow checks locked dependency installation, TypeScript, deterministic boundary regressions and root/desktop JavaScript audits on Windows and Ubuntu. Third-party actions are pinned to verified commit SHAs, repository permission is read-only and checkout credentials are not persisted. No production credentials or signing secrets are provided.
 
-The existing local-API authentication/Host/Origin regression was moved out of the application-driving integration file into a core-only test. Its workflow polling now fails if the run never reaches a terminal state. Existing Android package-filter/selector tests were also separated from device opt-ins into a parser-only file so CI checks notification/package isolation without adb. Other device/browser/manual tests remain available through the original full suite and are excluded from `test:ci`; they were not replaced by mocks. Local typechecking, deterministic regressions and both JavaScript audits passed. Hosted-run status is tracked in development-status.md.
+The existing local-API authentication/Host/Origin regression was moved out of the application-driving integration file into a core-only test. Its workflow polling now fails if the run never reaches a terminal state. Existing Android package-filter/selector tests were also separated from device opt-ins into a parser-only file so CI checks notification/package isolation without adb. Other device/browser/manual tests remain available through the original full suite and are excluded from `test:ci`; they were not replaced by mocks. Local typechecking, deterministic regressions and both JavaScript audits passed. Hosted checks also passed on Windows 2025 and Ubuntu 24.04 at `61f5f18`; see development-status.md for the exact run and remaining acceptance gates.
 
 ## Current capability inventory
 
