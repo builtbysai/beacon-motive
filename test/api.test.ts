@@ -62,4 +62,3 @@ test("local API: token, host and origin checks; save, run and read back", async 
     await s.close();
   }
 });
-

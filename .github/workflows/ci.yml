@@ -24,7 +24,6 @@ jobs:
     timeout-minutes: 10
     env:
       # Never select a developer profile or opt in to hardware/model fixtures.
-      MOTIVE_HOME: ${{ runner.temp }}/motive-ci
       MOTIVE_TEST_ANDROID: "0"
       MOTIVE_TEST_ANDROID_HELPER: "0"
       MOTIVE_TEST_OLLAMA: "0"
@@ -40,6 +39,8 @@ jobs:
       - run: npm run typecheck
       # Explicit file list, not npm test: the full suite can operate real apps.
       - run: npm run test:ci
+        env:
+          MOTIVE_HOME: ${{ runner.temp }}/motive-ci
       - name: Audit root dependencies
         run: npm audit --audit-level=high
       - name: Audit desktop JavaScript dependencies
