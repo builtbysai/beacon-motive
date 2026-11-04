@@ -7,5 +7,6 @@ examples/out/
 apps/desktop/src-tauri/gen/
 apps/android-helper/local.properties
 apps/android-helper/.gradle/
+apps/android-helper/.kotlin/
 apps/android-helper/build/
 apps/android-helper/app/build/
