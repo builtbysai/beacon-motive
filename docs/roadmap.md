@@ -107,3 +107,7 @@ Not started: installer and prebuilt helper, plugin interface, optional Beacon Re
 ## Working boundaries
 
 The engine must remain useful with no AI provider installed. Model suggestions are optional, loopback-only, validated proposals requiring human application; false-positive behavior prevents any claim of autonomous repair. Keep scopes narrow, the API authenticated on loopback, secret redaction, visible recording/review, cancellation and emergency Stop. No shell operation, inherited Remote permission, production workflow run, phone input or audio test is part of this documentation review. See [workspace.md](workspace.md), [development-status.md](development-status.md) and the security ADRs before acting.
+
+## November 4 device checkpoint
+
+The connected Pixel passed the unchanged scoped Settings replay in portrait using an isolated profile. Earlier target timeouts and unresolved landscape behavior are recorded in development-status.md. Human teaching/review, emergency Stop and broader device/installer acceptance remain open. Surfiena management and a temporary interactive status window were verified; no Motive desktop workflow acceptance is inferred.

@@ -2,6 +2,12 @@
 
 Latest development validation: November 2, 2026. Earlier implementation/build records below are from November 1; re-run relevant checks after later changes.
 
+## Connected Pixel check — November 4, 2026
+
+Pixel 7a (Android 17/API 37), USB serial `34171JEHN07672`, authorized ADB and the existing Motive helper were verified. The unchanged `examples/android-settings-tour.json` ran against current source with an isolated MOTIVE_HOME and an explicit device serial: it reached Default apps and returned Home in 5.139 seconds without changing settings. This is a narrow real-device replay pass, not teaching, emergency Stop, installer or general Android acceptance.
+
+The first attempt timed out finding Apps while the observed layout included a clipped/inverted target; the selector correctly rejected that target. A diagnostic variant adding a swipe also timed out. The unchanged fixture subsequently passed with the display in portrait. Layout changed between observations, so landscape behavior and the precise cause remain unresolved; no selector safety guard was relaxed. No audio or model test ran, and canonical workflow/token/database state was untouched.
+
 ## Deterministic CI follow-up
 
 Added a read-only, SHA-pinned GitHub Actions workflow for Windows/Ubuntu, locked JavaScript installs, strict TypeScript, an explicit non-UI test command and root/desktop JavaScript audit gates. The API boundary regression now lives outside application-driving integration tests and fails if workflow polling never completes. Existing Android parser/package-isolation regressions now run independently of device opt-ins. These are moved existing tests, not duplicated or replaced hardware acceptance.
